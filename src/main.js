@@ -36,6 +36,41 @@ let tickTimer = null;
 let traySupported = true;
 let lastUpdateStatus = null;
 let lastEvent = { time: null, text: 'Aguardando primeiro ciclo...', kind: 'info' };
+let instanceLockFd = null;
+let pendingApply = null; // { target: 'on'|'off', reason: 'schedule', ts: number }
+
+function acquireInstanceLock() {
+  const lockFile = path.join(CONFIG_DIR, 'instance.lock');
+  try {
+    fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    instanceLockFd = fs.openSync(lockFile, 'wx');
+    fs.writeSync(instanceLockFd, String(process.pid));
+    return true;
+  } catch (err) {
+    try {
+      const oldPid = parseInt(fs.readFileSync(lockFile, 'utf8'), 10);
+      if (!isNaN(oldPid)) {
+        try {
+          process.kill(oldPid, 0);
+          return false;
+        } catch {
+          fs.unlinkSync(lockFile);
+          instanceLockFd = fs.openSync(lockFile, 'wx');
+          fs.writeSync(instanceLockFd, String(process.pid));
+          return true;
+        }
+      }
+    } catch {
+      try {
+        fs.unlinkSync(lockFile);
+        instanceLockFd = fs.openSync(lockFile, 'wx');
+        fs.writeSync(instanceLockFd, String(process.pid));
+        return true;
+      } catch { /* falhou de novo */ }
+    }
+  }
+  return false;
+}
 
 /* ------------------------------------------------------------------ utils */
 
@@ -86,6 +121,21 @@ function run(cmd, args, timeout = 5000) {
   } catch (err) {
     return { ok: false, code: null, out: '', err: err.message, command: `${cmd} ${args.join(' ')}`.trim() };
   }
+}
+
+function sunshineActive() {
+  const r = run('pgrep', ['-x', 'sunshine'], 2000);
+  return r.ok && !!r.out;
+}
+
+function startSunshine() {
+  const r = run('sunshine', [], 5000);
+  if (r.ok) {
+    logEvent('Sunshine iniciado após despertar da tela.', 'info');
+    return true;
+  }
+  logEvent('Não foi possível iniciar o Sunshine automaticamente.', 'warn');
+  return false;
 }
 
 function detectBackend(preferred) {
@@ -403,6 +453,8 @@ function snapshot() {
     lastEvent,
     now: d.toISOString(),
     validSchedule: offMin !== null && onMin !== null && offMin !== onMin,
+    pending: !!pendingApply,
+    pendingTarget: pendingApply ? pendingApply.target : null,
   };
 }
 
@@ -443,11 +495,26 @@ function tick() {
       }
     }
 
+    // Se há uma confirmação pendente (usuário salvou um horário que já está vigente),
+    // o agendador automático não aplica sozinho. Aguarda o usuário escolher via IPC:
+    // confirmApply (aplica agora) ou deferApply (deixa o agendamento normal seguir,
+    // ou seja, desligará no offTime do próximo dia).
+    if (pendingApply && pendingApply.target === 'off') {
+      broadcast();
+      return;
+    }
+
     if (config.enabled && !config.manualOverride && target !== appliedState) {
       const res = applyState(target);
       if (res.ok) {
         logEvent(`Ação automática: tela ${target === 'off' ? 'apagada' : 'ligada'} · ${res.message}`, target === 'off' ? 'off' : 'on');
         appliedState = target;
+        pendingApply = null;
+        // Ao despertar a tela, garante que o Sunshine esteja rodando para receber
+        // pedidos de "Acordar PC" via Moonlight.
+        if (target === 'on' && !sunshineActive()) {
+          startSunshine();
+        }
       } else {
         logEvent(`Falha ao ${target === 'off' ? 'apagar' : 'ligar'}: ${res.message}`, 'error');
       }
@@ -516,10 +583,26 @@ function manualApply(state) {
 }
 
 function setConfig(patch) {
+  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+
   config = { ...config, ...patch };
   saveConfig();
-  lastTarget = null;
-  tick();
+
+  // Recalcula o alvo desejado com a nova config.
+  const target = desiredState(nowMinutes, toMinutes(config.offTime), toMinutes(config.onTime));
+  lastTarget = target;
+
+  // Se o usuário alterou a agenda e o alvo já está vigente AGORA (ex: escolheu
+  // um horário de desligamento que já passou ou está dentro da janela atual),
+  // não desliga na mesma hora. Deixa um pendingApply para o frontend pedir
+  // confirmação: "desligar agora" ou "agendar para o próximo dia".
+  if (target !== appliedState && target === 'off' && config.enabled && !config.manualOverride) {
+    pendingApply = { target, reason: 'schedule', ts: Date.now() };
+    // Não aplica ainda; aguarda confirmação via IPC confirmApply/deferApply.
+    return { ...snapshot(), pending: true };
+  }
+
+  pendingApply = null;
   return snapshot();
 }
 
@@ -589,9 +672,35 @@ ipcMain.handle('set-config', (_e, patch) => {
   if ('autostart' in (patch || {})) writeAutostart(!!patch.autostart);
   if ('autoUpdate' in (patch || {})) {
     updater.setAutoUpdateGetter(() => !!config.autoUpdate);
-    if (patch.autoUpdate) updater.maybeAutoInstall();
+    // Não instala automaticamente: apenas grava a preferência. O usuário instala
+    // manualmente quando quiser, sem interromper a vigília nem a transmissão.
   }
   return next;
+});
+// Usuário confirmou: aplica o desligamento/acionamento pendente agora.
+ipcMain.handle('confirmApply', (_e) => {
+  if (!pendingApply) return { ...snapshot(), pending: false };
+  const { target } = pendingApply;
+  const res = applyState(target);
+  if (res.ok) {
+    appliedState = target;
+    pendingApply = null;
+    logEvent(`Confirmação do usuário: tela ${target === 'off' ? 'apagada' : 'ligada'} agora.`, target === 'off' ? 'off' : 'on');
+    if (target === 'on' && !sunshineActive()) {
+      startSunshine();
+    }
+  } else {
+    logEvent(`Falha ao aplicar confirmação: ${res.message}`, 'error');
+  }
+  return { ...res, ...snapshot(), pending: false };
+});
+// Usuário escolheu adiar: limpa o pending e deixa o agendamento normal seguir
+// (desligará no offTime do próximo dia).
+ipcMain.handle('deferApply', (_e) => {
+  if (!pendingApply) return { ...snapshot(), pending: false };
+  pendingApply = null;
+  logEvent('Usuário adiou a ação; o agendamento normal seguirá no próximo ciclo.', 'info');
+  return { ...snapshot(), pending: false };
 });
 ipcMain.handle('apply', (_e, state) => ({ ...manualApply(state), ...snapshot() }));
 ipcMain.handle('list-outputs', () => listOutputs(detectBackend(config.backend)));
@@ -716,10 +825,16 @@ function runCheck() {
 if (process.argv.includes('--check') || process.argv.includes('--check-json')) {
   runCheck();
 } else {
-  const gotLock = app.requestSingleInstanceLock();
-  if (!gotLock) {
+  // Single Instance fixo entre versões: um arquivo de lock em ~/.config/nocturne-display/instance.lock
+  // impede que v1.0.0 e v1.2.0 (ou qualquer AppImage diferente) rodem juntas.
+  if (!acquireInstanceLock()) {
     app.quit();
   } else {
+    const gotLock = app.requestSingleInstanceLock();
+    if (!gotLock) {
+      try { if (instanceLockFd !== null) fs.closeSync(instanceLockFd); } catch {}
+      app.quit();
+    } else {
     app.on('second-instance', () => showWindow());
 
     app.whenReady().then(() => {

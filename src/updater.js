@@ -204,9 +204,11 @@ async function check(options = {}) {
     checking = false;
 
     if (getAutoUpdate() && !manual) {
-      // Instala em segundo plano; o reinício fica sob controle do usuário
-      // para não interromper a vigília nem uma sessão de Moonlight.
+      // Instala diretamente pelo próprio app: baixa, substitui o AppImage em uso
+      // e reinicia o processo para encerrar a sessão antiga. Após o reinício,
+      // permanece apenas a nova versão instalada.
       await install();
+      restart();
     }
     return snapshot();
   } catch (err) {
