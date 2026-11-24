@@ -1,0 +1,80 @@
+# Nocturne Display — Vigília do Monitor
+
+AppImage Linux (x86_64) que agenda **apagar** e **acender** o monitor sem desligar o PC.
+Feito para quem usa **Sunshine + Tailscale + Moonlight**: você dorme com a tela apagada e,
+no horário escolhido, ela desperta sozinha para você conectar de fora de casa.
+
+> Interface gótica com estética Frutiger Aero: vidro fosco, partículas flutuantes,
+> rosácea animada, fonte Cinzel, orbes pulsantes e transições suaves.
+
+## Download
+
+Baixe o AppImage na aba [**Releases**](../../releases). Também é possível compilar localmente:
+
+```bash
+npm install
+npm run build
+# sai em dist/Nocturne-Display-1.0.0-x86_64.AppImage
+```
+
+## Uso
+
+```bash
+chmod +x Nocturne-Display-1.0.0-x86_64.AppImage
+./Nocturne-Display-1.0.0-x86_64.AppImage
+```
+
+1. No **Altar**, defina os horários (ex.: `08:00` apagar, `19:00` acender).
+2. Ative o **Agendamento ativo**.
+3. Teste com **Apagar agora** / **Acender agora**.
+4. Em **Rituais**, ative **Iniciar com o sistema** e **Iniciar oculto na bandeja**.
+5. O botão `×` apenas esconde a janela: o app continua na bandeja mantendo a agenda.
+
+Horários *cross-midnight* funcionam (ex.: `22:00` → `06:00`). O app reavalia a agenda
+ao voltar da suspensão.
+
+## Backends suportados (detecção automática)
+
+| Sessão | Backend | Comando |
+|---|---|---|
+| KDE Wayland | KScreen | `kscreen-doctor` |
+| Sway / Hyprland / wlroots | wlroots | `wlr-randr` |
+| X11 | xrandr | `xrandr --output ... --off / --auto` |
+| Monitor DDC/CI | ddcutil | `ddcutil setvcp d6 00/01` |
+| X11 (alternativa) | DPMS | `xset dpms force off/on` |
+
+Se nada for detectado, instale um destes: `kscreen-doctor` (KDE), `wlr-randr`
+(wlroots), `xorg-xrandr` (X11) ou `ddcutil` (DDC/CI). Também é possível forçar o
+backend manualmente na aba **Saídas**.
+
+## Moonlight / Sunshine
+
+- O modo **DPMS** apaga a luz de fundo, mas mantém a saída ativa no compositor — costuma
+  ser a opção mais segura se o Sunshine perder a captura quando a saída é desligada.
+- Se ainda assim o streaming falhar sem monitor ativo, use um dummy plug / saída virtual.
+
+## Teste rápido de compatibilidade
+
+```bash
+./Nocturne-Display-1.0.0-x86_64.AppImage --check
+./Nocturne-Display-1.0.0-x86_64.AppImage --check-json
+```
+
+Verifica distro/sessão, FUSE, bibliotecas faltando, backend, saídas, agenda, autostart
+e se o Sunshine está rodando. O prompt pronto para pedir esse teste a um agente de IA
+está em [`PROMPT-TESTE-RAPIDO.md`](PROMPT-TESTE-RAPIDO.md).
+
+## Arquivos de configuração
+
+- `~/.config/nocturne-display/config.json`
+- `~/.config/autostart/nocturne-display.desktop`
+
+Se o AppImage não abrir por falta de `libfuse2`:
+
+```bash
+./Nocturne-Display-1.0.0-x86_64.AppImage --appimage-extract-and-run
+```
+
+## Licença
+
+MIT — veja [LICENSE](LICENSE).

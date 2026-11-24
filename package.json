@@ -1,0 +1,39 @@
+{
+  "name": "nocturne-display",
+  "version": "1.0.0",
+  "description": "Vigília Noturna — agendador de monitor para Sunshine + Moonlight com estética gótica e Frutiger Aero",
+  "desktopName": "Nocturne Display",
+  "main": "src/main.js",
+  "author": "Nocturne",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --linux AppImage --x64",
+    "dev": "electron . --dev"
+  },
+  "devDependencies": {
+    "electron": "45.4.1",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.nocturne.display",
+    "productName": "Nocturne Display",
+    "artifactName": "Nocturne-Display-${version}-x86_64.AppImage",
+    "asar": true,
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "assets/icon.png",
+      "syncDesktopName": true,
+      "category": "Utility",
+      "synopsis": "Agende desligamento e ligamento do monitor para streaming remoto"
+    }
+  }
+}

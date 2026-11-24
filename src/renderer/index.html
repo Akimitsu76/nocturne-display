@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nocturne Display — Vigília do Monitor</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="ambient" aria-hidden="true">
+  <div class="aurora aurora-1"></div>
+  <div class="aurora aurora-2"></div>
+  <div class="aurora aurora-3"></div>
+  <div class="moon-halo"></div>
+  <div class="grid-floor"></div>
+  <div id="particles"></div>
+  <div class="vignette"></div>
+</div>
+
+<div class="shell" id="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-sigil">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <path d="M12 46 V27 Q12 15 32 5 Q52 15 52 27 V46" fill="none" stroke="currentColor" stroke-width="2" opacity=".65"/>
+          <path d="M37 12 A17 17 0 1 0 46 37 A14 14 0 1 1 37 12 Z" fill="currentColor"/>
+          <circle cx="32" cy="4" r="3" fill="#e8c98d"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <span class="brand-name">NOCTURNE</span>
+        <span class="brand-sub">vigília do monitor</span>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-view="altar">
+        <span class="nav-glyph">✦</span><span>Altar</span><span class="nav-mark"></span>
+      </button>
+      <button class="nav-item" data-view="saidas">
+        <span class="nav-glyph">◈</span><span>Saídas</span><span class="nav-mark"></span>
+      </button>
+      <button class="nav-item" data-view="rituais">
+        <span class="nav-glyph">☾</span><span>Rituais</span><span class="nav-mark"></span>
+      </button>
+    </nav>
+
+    <div class="sidebar-spacer"></div>
+
+    <div class="sidebar-status glass-mini">
+      <div class="pulse-dot" id="sideDot"></div>
+      <div>
+        <div class="side-status-label">ESTADO ATUAL</div>
+        <div class="side-status-value" id="sideState">Tela acesa</div>
+      </div>
+    </div>
+    <div class="sidebar-foot">v1.0.0 <span>·</span> Sunshine Companion</div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="crumbs"><span class="crumb-dim">Nocturne</span><span class="crumb-sep">/</span><span id="crumb">Altar</span></div>
+      <div class="topbar-right">
+        <div class="clock-wrap">
+          <span class="clock-glyph">☾</span>
+          <span id="clock" class="clock">00:00:00</span>
+        </div>
+        <div class="window-controls">
+          <button class="win-btn" id="btnMin" title="Minimizar">─</button>
+          <button class="win-btn" id="btnMax" title="Maximizar">□</button>
+          <button class="win-btn danger" id="btnClose" title="Fechar na bandeja">×</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ============================ ALTAR ============================ -->
+    <section class="view active" id="view-altar">
+      <div class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="eyebrow-line"></span> AUTOMAÇÃO DE VIGÍLIA</div>
+          <h1>Vigília do <em>Monitor</em></h1>
+          <p>Determine a hora em que a tela se apaga e a hora em que desperta. O computador permanece ligado — pronto para o Moonlight quando você voltar.</p>
+        </div>
+        <svg class="rose" viewBox="0 0 200 200" aria-hidden="true">
+          <defs>
+            <linearGradient id="roseGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#8ef3e4"/><stop offset="1" stop-color="#9b7ce0"/>
+            </linearGradient>
+          </defs>
+          <g class="rose-rotate">
+            <circle cx="100" cy="100" r="88" fill="none" stroke="url(#roseGrad)" stroke-width="1" opacity=".5"/>
+            <circle cx="100" cy="100" r="74" fill="none" stroke="url(#roseGrad)" stroke-width="1" opacity=".35"/>
+            <circle cx="100" cy="100" r="30" fill="none" stroke="url(#roseGrad)" stroke-width="1.5" opacity=".7"/>
+            <circle cx="100" cy="100" r="12" fill="url(#roseGrad)" opacity=".28"/>
+            <g stroke="url(#roseGrad)" stroke-width="1.2" opacity=".55">
+              <path d="M100 12 V188 M12 100 H188 M39 39 L161 161 M161 39 L39 161"/>
+              <path d="M62 22 L138 178 M22 62 L178 138 M138 22 L62 178 M178 62 L22 138"/>
+            </g>
+            <g fill="url(#roseGrad)" opacity=".8">
+              <circle cx="100" cy="26" r="3"/><circle cx="174" cy="100" r="3"/>
+              <circle cx="100" cy="174" r="3"/><circle cx="26" cy="100" r="3"/>
+            </g>
+          </g>
+          <path d="M100 8 L100 192" stroke="#fff" stroke-width=".5" opacity=".12"/>
+        </svg>
+      </div>
+
+      <div class="status-card glass">
+        <div class="status-orb-wrap">
+          <div class="status-orb" id="statusOrb">
+            <div class="orb-core"></div>
+            <div class="orb-ring ring-a"></div>
+            <div class="orb-ring ring-b"></div>
+          </div>
+        </div>
+        <div class="status-info">
+          <div class="status-kicker">ESTADO DA TELA</div>
+          <div class="status-title" id="statusTitle">Tela acesa</div>
+          <div class="status-desc" id="statusDesc">Aguardando a próxima mudança programada.</div>
+        </div>
+        <div class="status-next">
+          <div class="next-kicker">PRÓXIMO RITUAL</div>
+          <div class="next-time" id="nextTime">--:--</div>
+          <div class="next-label" id="nextLabel">calculando...</div>
+          <div class="next-countdown" id="nextCountdown">--</div>
+        </div>
+      </div>
+
+      <div class="timeline-card glass">
+        <div class="card-head">
+          <div>
+            <span class="card-title">Ciclo das trevas</span>
+            <span class="card-sub">A faixa escura representa o período com a tela apagada</span>
+          </div>
+          <div class="legend">
+            <span class="legend-item"><i class="lg-on"></i>acesa</span>
+            <span class="legend-item"><i class="lg-off"></i>apagada</span>
+          </div>
+        </div>
+        <div class="timeline" id="timeline">
+          <div class="tl-track"></div>
+          <div class="tl-off" id="tlOff1"></div>
+          <div class="tl-off" id="tlOff2"></div>
+          <div class="tl-marker off-marker" id="tlOffMarker"><span>apagar</span></div>
+          <div class="tl-marker on-marker" id="tlOnMarker"><span>acender</span></div>
+          <div class="tl-now" id="tlNow"><span></span></div>
+        </div>
+        <div class="tl-hours"><span>00</span><span>03</span><span>06</span><span>09</span><span>12</span><span>15</span><span>18</span><span>21</span><span>24</span></div>
+      </div>
+
+      <div class="time-grid">
+        <div class="time-card glass time-off">
+          <div class="time-card-glow"></div>
+          <div class="time-card-head"><span class="time-icon">☾</span><span>Apagar a tela às</span></div>
+          <input type="time" id="offTime" value="08:00" aria-label="Horário para apagar a tela" />
+          <div class="time-card-foot">O monitor entra em repouso. O PC continua ligado.</div>
+        </div>
+        <div class="time-divider">
+          <div class="divider-line"></div><span class="divider-glyph">✧</span><div class="divider-line"></div>
+        </div>
+        <div class="time-card glass time-on">
+          <div class="time-card-glow"></div>
+          <div class="time-card-head"><span class="time-icon">☀</span><span>Acender a tela às</span></div>
+          <input type="time" id="onTime" value="19:00" aria-label="Horário para acender a tela" />
+          <div class="time-card-foot">A tela desperta e o Sunshine volta a transmitir.</div>
+        </div>
+      </div>
+
+      <div class="actions-row">
+        <button class="btn btn-off" id="btnOff"><span class="btn-glyph">☾</span> Apagar agora</button>
+        <button class="btn btn-on" id="btnOn"><span class="btn-glyph">☀</span> Acender agora</button>
+        <button class="btn btn-ghost" id="btnSync"><span class="btn-glyph">⟳</span> Sincronizar</button>
+        <div class="schedule-toggle">
+          <label class="switch">
+            <input type="checkbox" id="enabled" checked />
+            <span class="slider"></span>
+          </label>
+          <span>Agendamento ativo</span>
+        </div>
+      </div>
+
+      <div class="note glass-mini" id="scheduleWarning" hidden>
+        ⚠ Defina horários diferentes para criar um ciclo válido.
+      </div>
+
+      <div class="note glass-mini moonlight-note">
+        <span class="note-glyph">✧</span>
+        <div><strong>Dica Moonlight:</strong> deixe a tela acesa no horário em que pretende conectar. Se o streaming falhar com a saída desligada, abra <b>Saídas</b> e experimente o modo <b>DPMS</b>, que mantém a saída ativa para captura.</div>
+      </div>
+    </section>
+
+    <!-- ============================ SAÍDAS ============================ -->
+    <section class="view" id="view-saidas">
+      <div class="section-head">
+        <div class="eyebrow"><span class="eyebrow-line"></span> CONEXÕES</div>
+        <h2>Saídas de vídeo</h2>
+        <p>Escolha o backend e o monitor que o ritual deve controlar. A detecção é automática, mas você pode forçar manualmente.</p>
+      </div>
+
+      <div class="glass panel">
+        <div class="card-head">
+          <div><span class="card-title">Backend de controle</span><span class="card-sub">Detectado a partir da sua sessão gráfica</span></div>
+          <span class="badge" id="backendBadge">detectando...</span>
+        </div>
+        <div class="select-row">
+          <select id="backendSelect" class="styled-select">
+            <option value="auto">Automático (recomendado)</option>
+            <option value="kscreen">KDE / KScreen (Wayland)</option>
+            <option value="wlr">wlroots (Sway / Hyprland)</option>
+            <option value="xrandr">X11 / xrandr</option>
+            <option value="ddcutil">DDC/CI (monitor físico)</option>
+            <option value="dpms">DPMS (X11, mantém saída)</option>
+          </select>
+          <button class="btn btn-ghost small" id="btnRescan"><span class="btn-glyph">⟳</span> Procurar telas</button>
+        </div>
+        <div class="hint" id="backendHint">Dica: em Wayland com KDE use KScreen. Em X11 use xrandr. DPMS apenas apaga a luz de fundo e preserva a captura do Sunshine.</div>
+      </div>
+
+      <div class="glass panel output-panel">
+        <div class="card-head">
+          <div><span class="card-title">Monitores encontrados</span><span class="card-sub">Selecione qual saída será apagada e ligada</span></div>
+          <span class="count-badge" id="outputCount">0 saídas</span>
+        </div>
+        <div class="output-list" id="outputList"></div>
+      </div>
+    </section>
+
+    <!-- ============================ RITUAIS ============================ -->
+    <section class="view" id="view-rituais">
+      <div class="section-head">
+        <div class="eyebrow"><span class="eyebrow-line"></span> PREFERÊNCIAS</div>
+        <h2>Rituais &amp; configuração</h2>
+        <p>Ajustes finais para que a vigília funcione sem intervenção.</p>
+      </div>
+
+      <div class="glass panel settings-panel">
+        <div class="setting-row">
+          <div class="setting-copy"><strong>Agendamento ativo</strong><span>Executa apagar e acendar nos horários definidos.</span></div>
+          <label class="switch"><input type="checkbox" id="setEnabled" checked /><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+          <div class="setting-copy"><strong>Iniciar com o sistema</strong><span>Cria uma entrada de inicialização automática na sessão.</span></div>
+          <label class="switch"><input type="checkbox" id="setAutostart" /><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+          <div class="setting-copy"><strong>Iniciar oculto na bandeja</strong><span>Ao iniciar, abre apenas o ícone; a janela permanece escondida.</span></div>
+          <label class="switch"><input type="checkbox" id="setMinimized" /><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+          <div class="setting-copy"><strong>Sino etéreo nas transições</strong><span>Um toque suave quando a tela apaga ou desperta.</span></div>
+          <label class="switch"><input type="checkbox" id="setSound" /><span class="slider"></span></label>
+        </div>
+      </div>
+
+      <div class="glass panel log-panel">
+        <div class="card-head"><div><span class="card-title">Diário da vigília</span><span class="card-sub">Últimos eventos do agendador</span></div></div>
+        <div class="log-list" id="logList">
+          <div class="log-entry info"><span class="log-dot"></span><span class="log-time">--:--:--</span><span class="log-text">Aguardando eventos...</span></div>
+        </div>
+      </div>
+
+      <div class="glass-mini note" id="devNote" hidden>Modo de desenvolvimento — a configuração fica em <code>~/.config/nocturne-display/config.json</code>.</div>
+    </section>
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
