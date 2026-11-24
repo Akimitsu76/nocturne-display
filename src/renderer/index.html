@@ -43,6 +43,9 @@
       <button class="nav-item" data-view="rituais">
         <span class="nav-glyph">☾</span><span>Rituais</span><span class="nav-mark"></span>
       </button>
+      <button class="nav-item" data-view="atualizacoes">
+        <span class="nav-glyph">⇩</span><span>Atualizações</span><span class="nav-mark" id="updateNavMark"></span>
+      </button>
     </nav>
 
     <div class="sidebar-spacer"></div>
@@ -54,7 +57,7 @@
         <div class="side-status-value" id="sideState">Tela acesa</div>
       </div>
     </div>
-    <div class="sidebar-foot">v1.0.0 <span>·</span> Sunshine Companion</div>
+    <div class="sidebar-foot"><span id="footVersion">v1.2.0</span> <span>·</span> Sunshine Companion</div>
   </aside>
 
   <main class="main">
@@ -261,6 +264,77 @@
       </div>
 
       <div class="glass-mini note" id="devNote" hidden>Modo de desenvolvimento — a configuração fica em <code>~/.config/nocturne-display/config.json</code>.</div>
+    </section>
+
+    <!-- ========================== ATUALIZAÇÕES ========================== -->
+    <section class="view" id="view-atualizacoes">
+      <div class="section-head">
+        <div class="eyebrow"><span class="eyebrow-line"></span> MANUTENÇÃO</div>
+        <h2>Atualizações</h2>
+        <p>O app consulta os releases do GitHub e, quando há versão nova, baixa e substitui o AppImage em segundo plano. A vigília continua ativa; basta reiniciar quando quiser.</p>
+      </div>
+
+      <div class="glass panel update-hero">
+        <div class="update-sigil" aria-hidden="true">
+          <svg viewBox="0 0 64 64">
+            <circle cx="32" cy="32" r="23" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".35"/>
+            <path d="M47 23 A19 19 0 1 0 49 39" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+            <path d="M47 14 V24 H37" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="update-main">
+          <div class="update-kicker">VERSÃO INSTALADA</div>
+          <div class="update-version" id="updateCurrent">—</div>
+          <div class="update-sub" id="updateChannel">canal estável · GitHub Releases</div>
+        </div>
+        <div class="update-status-box">
+          <div class="update-status" id="updateStatus">Aguardando verificação...</div>
+          <div class="update-status-detail" id="updateStatusDetail">—</div>
+        </div>
+      </div>
+
+      <div class="glass panel">
+        <div class="card-head">
+          <div>
+            <span class="card-title">Atualização automática</span>
+            <span class="card-sub">Verificação a cada <span id="updateInterval">30</span> min e ao iniciar o app</span>
+          </div>
+          <span class="badge" id="updateBadge">—</span>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-copy">
+            <strong>Instalar atualizações automaticamente</strong>
+            <span>Quando sair um release, o novo AppImage é baixado e aplicado sem interromper o agendamento.</span>
+          </div>
+          <label class="switch"><input type="checkbox" id="autoUpdate" checked /><span class="slider"></span></label>
+        </div>
+
+        <div class="update-actions">
+          <button class="btn btn-ghost small" id="btnCheckUpdate"><span class="btn-glyph">⟳</span> Verificar agora</button>
+          <button class="btn btn-on small" id="btnInstallUpdate" hidden><span class="btn-glyph">⇩</span> Baixar e instalar</button>
+          <button class="btn btn-ghost small" id="btnRelease" hidden><span class="btn-glyph">↗</span> Ver no GitHub</button>
+          <button class="btn btn-on small" id="btnRestart" hidden><span class="btn-glyph">↻</span> Reiniciar agora</button>
+        </div>
+
+        <div class="progress-wrap" id="updateProgressWrap" hidden>
+          <div class="progress-track"><div class="progress-fill" id="updateProgressFill"></div></div>
+          <span class="progress-label" id="updateProgressLabel">0%</span>
+        </div>
+
+        <div class="hint" id="updateHint">Requer o AppImage original em um diretório com permissão de escrita. Se você usa o modo <code>--appimage-extract-and-run</code>, a instalação automática fica indisponível.</div>
+      </div>
+
+      <div class="glass panel notes-panel" id="releaseNotesPanel" hidden>
+        <div class="card-head">
+          <div>
+            <span class="card-title">Notas da versão <span id="releaseVersion"></span></span>
+            <span class="card-sub" id="releaseDate"></span>
+          </div>
+          <span class="count-badge" id="releaseAsset"></span>
+        </div>
+        <div class="release-notes" id="releaseNotes"></div>
+      </div>
     </section>
   </main>
 </div>

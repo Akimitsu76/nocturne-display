@@ -13,6 +13,16 @@ contextBridge.exposeInMainWorld('api', {
   maximize: () => ipcRenderer.invoke('window-maximize'),
   quit: () => ipcRenderer.invoke('quit'),
   isDev: () => ipcRenderer.invoke('dev-mode'),
+  getUpdateState: () => ipcRenderer.invoke('get-update-state'),
+  checkUpdates: () => ipcRenderer.invoke('check-updates'),
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  restartApp: () => ipcRenderer.invoke('restart-app'),
+  openRelease: () => ipcRenderer.invoke('open-release'),
+  onUpdate: (callback) => {
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on('update-changed', listener);
+    return () => ipcRenderer.removeListener('update-changed', listener);
+  },
   onState: (callback) => {
     const listener = (_event, data) => callback(data);
     ipcRenderer.on('state-changed', listener);

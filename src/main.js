@@ -5,6 +5,7 @@ const { spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const updater = require('./updater');
 
 const IS_DEV = !app.isPackaged || process.argv.includes('--dev');
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'nocturne-display');
@@ -23,6 +24,7 @@ const DEFAULTS = {
   autostart: false,
   sound: false,
   manualOverride: false,
+  autoUpdate: true,
 };
 
 let config = loadConfig();
@@ -32,6 +34,7 @@ let appliedState = 'on';
 let lastTarget = null;
 let tickTimer = null;
 let traySupported = true;
+let lastUpdateStatus = null;
 let lastEvent = { time: null, text: 'Aguardando primeiro ciclo...', kind: 'info' };
 
 /* ------------------------------------------------------------------ utils */
@@ -390,6 +393,7 @@ function snapshot() {
   const next = nextChange(offMin, onMin, nowMinutes);
   return {
     config: { ...config },
+    version: app.getVersion(),
     state: appliedState,
     target: desiredState(nowMinutes, offMin, onMin),
     backend,
@@ -408,6 +412,22 @@ function broadcast() {
   updateTray(data);
   return data;
 }
+
+const UPDATE_LOG = {
+  available: (s) => `Atualização ${s.latestVersion} disponível`,
+  downloading: (s) => s.message,
+  installed: (s) => `${s.message} · reinicie quando quiser`,
+  error: (s) => s.message,
+};
+
+updater.onChange((update) => {
+  if (win && !win.isDestroyed()) win.webContents.send('update-changed', update);
+  if (update.status !== lastUpdateStatus) {
+    lastUpdateStatus = update.status;
+    const make = UPDATE_LOG[update.status];
+    if (make) logEvent(make(update), update.status === 'error' ? 'error' : 'info');
+  }
+});
 
 function tick() {
   try {
@@ -567,6 +587,10 @@ ipcMain.handle('get-state', () => snapshot());
 ipcMain.handle('set-config', (_e, patch) => {
   const next = setConfig(patch || {});
   if ('autostart' in (patch || {})) writeAutostart(!!patch.autostart);
+  if ('autoUpdate' in (patch || {})) {
+    updater.setAutoUpdateGetter(() => !!config.autoUpdate);
+    if (patch.autoUpdate) updater.maybeAutoInstall();
+  }
   return next;
 });
 ipcMain.handle('apply', (_e, state) => ({ ...manualApply(state), ...snapshot() }));
@@ -585,6 +609,14 @@ ipcMain.handle('window-maximize', () => {
 });
 ipcMain.handle('quit', () => app.quit());
 ipcMain.handle('dev-mode', () => IS_DEV);
+
+/* --------------------------------------------------------------- updates */
+
+ipcMain.handle('get-update-state', () => updater.getState());
+ipcMain.handle('check-updates', () => updater.check({ manual: true }));
+ipcMain.handle('install-update', () => updater.install());
+ipcMain.handle('restart-app', () => updater.restart());
+ipcMain.handle('open-release', () => updater.openRelease());
 
 /* --------------------------------------------------------- quick self-test */
 
@@ -644,6 +676,9 @@ function collectCheck() {
   const sun = run('pgrep', ['-a', 'sunshine'], 3000);
   add('Sunshine', 'info', sun.ok && sun.out ? sun.out.split('\n')[0].slice(0, 160) : 'processo sunshine não encontrado neste instante');
 
+  const upd = updater.getState();
+  add('Atualizações', 'info', `v${app.getVersion()} · automática ${config.autoUpdate ? 'ativada' : 'desativada'} · ${upd.supported ? 'AppImage (instalação disponível)' : 'executável direto (somente aviso)'}`);
+
   if (backend === 'ddcutil') {
     let accessible = 0;
     try {
@@ -702,6 +737,9 @@ if (process.argv.includes('--check') || process.argv.includes('--check-json')) {
       tick();
       tickTimer = setInterval(tick, 1000);
 
+      updater.setAutoUpdateGetter(() => !!config.autoUpdate);
+      updater.start();
+
       powerMonitor.on('resume', () => {
         logEvent('Sistema retomado da suspensão — reavaliando agenda', 'info');
         tick();
@@ -718,6 +756,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   if (tickTimer) clearInterval(tickTimer);
+  updater.stop();
 });
 
 process.on('uncaughtException', (err) => {

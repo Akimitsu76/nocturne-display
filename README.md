@@ -14,14 +14,14 @@ Baixe o AppImage na aba [**Releases**](../../releases). Também é possível com
 ```bash
 npm install
 npm run build
-# sai em dist/Nocturne-Display-1.1.0-x86_64.AppImage
+# sai em dist/Nocturne-Display-1.2.0-x86_64.AppImage
 ```
 
 ## Uso
 
 ```bash
-chmod +x Nocturne-Display-1.0.0-x86_64.AppImage
-./Nocturne-Display-1.0.0-x86_64.AppImage
+chmod +x Nocturne-Display-1.2.0-x86_64.AppImage
+./Nocturne-Display-1.2.0-x86_64.AppImage
 ```
 
 1. No **Altar**, defina os horários (ex.: `08:00` apagar, `19:00` acender).
@@ -32,6 +32,19 @@ chmod +x Nocturne-Display-1.0.0-x86_64.AppImage
 
 Horários *cross-midnight* funcionam (ex.: `22:00` → `06:00`). O app reavalia a agenda
 ao voltar da suspensão.
+
+## Atualizações automáticas
+
+A aba **Atualizações** consulta a API de releases do GitHub ao iniciar e a cada 30 minutos.
+Quando existe uma versão mais nova, o AppImage é baixado e substituído em segundo plano —
+a vigília e a sessão do Moonlight continuam ativas. O reinício é manual: use o botão
+**Reiniciar agora** quando for conveniente.
+
+- Ative/desative em **Atualizações → Instalar atualizações automáticas** (opção `autoUpdate` em `config.json`).
+- **Verificar agora** consulta o GitHub sem instalar; **Baixar e instalar** aplica manualmente.
+- **Ver no GitHub** abre as notas do release.
+- A substituição é atômica (download temporário + `rename` no mesmo diretório) e valida `sha256` quando o release informa o digest.
+- A instalação automática exige o AppImage original em diretório com permissão de escrita. Em modo de desenvolvimento, `electron .`, ou `--appimage-extract-and-run`, o app mostra o aviso mas não substitui o executável.
 
 ## Backends suportados (detecção automática)
 
@@ -62,8 +75,8 @@ backend manualmente na aba **Saídas**. Em sessões Niri sem host de bandeja, o 
 ## Teste rápido de compatibilidade
 
 ```bash
-./Nocturne-Display-1.0.0-x86_64.AppImage --check
-./Nocturne-Display-1.0.0-x86_64.AppImage --check-json
+./Nocturne-Display-1.2.0-x86_64.AppImage --check
+./Nocturne-Display-1.2.0-x86_64.AppImage --check-json
 ```
 
 Verifica distro/sessão, FUSE, bibliotecas faltando, backend, saídas, agenda, autostart
@@ -78,7 +91,7 @@ está em [`PROMPT-TESTE-RAPIDO.md`](PROMPT-TESTE-RAPIDO.md).
 Se o AppImage não abrir por falta de `libfuse2`:
 
 ```bash
-./Nocturne-Display-1.0.0-x86_64.AppImage --appimage-extract-and-run
+./Nocturne-Display-1.2.0-x86_64.AppImage --appimage-extract-and-run
 ```
 
 ## Licença

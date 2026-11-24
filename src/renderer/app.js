@@ -2,6 +2,7 @@
 
 const $ = (id) => document.getElementById(id);
 let current = null;
+let updateState = null;
 let lastApplied = null;
 let lastEventTime = null;
 let lastOutputSig = null;
@@ -40,7 +41,12 @@ function tickClock() {
 function switchView(name) {
   document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${name}`));
   document.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
-  $('crumb').textContent = { altar: 'Altar', saidas: 'Saídas', rituais: 'Rituais' }[name] || name;
+  $('crumb').textContent = { altar: 'Altar', saidas: 'Saídas', rituais: 'Rituais', atualizacoes: 'Atualizações' }[name] || name;
+
+  if (name === 'atualizacoes' && updateState && !updateState.busy) {
+    const stale = !updateState.lastCheck || Date.now() - updateState.lastCheck > 10 * 60 * 1000;
+    if (stale) window.api.checkUpdates().then(renderUpdate);
+  }
 }
 
 document.querySelectorAll('.nav-item').forEach((b) => b.addEventListener('click', () => switchView(b.dataset.view)));
@@ -59,6 +65,19 @@ $('btnSync').addEventListener('click', async () => {
 $('btnRescan').addEventListener('click', async () => {
   await window.api.refresh();
   flash($('btnRescan'));
+});
+
+/* ------------------------------------------------------------- updates */
+$('btnCheckUpdate').addEventListener('click', async () => {
+  renderUpdate(await window.api.checkUpdates());
+});
+$('btnInstallUpdate').addEventListener('click', async () => {
+  renderUpdate(await window.api.installUpdate());
+});
+$('btnRestart').addEventListener('click', () => window.api.restartApp());
+$('btnRelease').addEventListener('click', () => window.api.openRelease());
+$('autoUpdate').addEventListener('change', async (e) => {
+  await window.api.setConfig({ autoUpdate: e.target.checked });
 });
 
 function flash(el) {
@@ -187,11 +206,72 @@ function appendLog(event) {
   }
 }
 
+/* -------------------------------------------------------- update rendering */
+const UPDATE_LABELS = {
+  idle: 'Aguardando verificação...',
+  checking: 'Verificando...',
+  'up-to-date': 'Atualizado',
+  available: 'Nova versão disponível',
+  downloading: 'Baixando atualização',
+  installing: 'Aplicando atualização',
+  installed: 'Atualização instalada',
+  unsupported: 'Instalação indisponível',
+  error: 'Falha na verificação',
+};
+
+function renderUpdate(state) {
+  if (!state) return;
+  updateState = state;
+
+  $('updateCurrent').textContent = `v${state.version}`;
+  $('updateInterval').textContent = String(state.checkIntervalMinutes || 30);
+  $('updateBadge').textContent = state.latestVersion ? `v${state.latestVersion}` : '—';
+  $('autoUpdate').checked = !!state.autoUpdate;
+
+  const hero = document.querySelector('.update-hero');
+  hero.classList.toggle('has-update', state.status === 'available' || state.status === 'downloading');
+  hero.classList.toggle('is-installed', state.status === 'installed');
+  hero.classList.toggle('is-error', state.status === 'error');
+  $('updateNavMark').classList.toggle('update-dot', state.status === 'available');
+
+  $('updateStatus').textContent = UPDATE_LABELS[state.status] || state.status;
+  $('updateStatusDetail').textContent = state.message || '—';
+
+  const busy = !!state.busy;
+  $('btnCheckUpdate').disabled = busy;
+  $('btnInstallUpdate').hidden = !(state.status === 'available' && state.supported && state.release && state.release.downloadUrl) || busy;
+  $('btnRestart').hidden = state.status !== 'installed';
+  $('btnRelease').hidden = !(state.release && state.release.url);
+
+  const inProgress = state.status === 'downloading' || state.status === 'installing';
+  $('updateProgressWrap').hidden = !inProgress;
+  $('updateProgressFill').style.width = `${Math.max(0, Math.min(100, state.progress || 0))}%`;
+  $('updateProgressLabel').textContent = `${Math.max(0, Math.min(100, state.progress || 0))}%`;
+
+  const notes = !!(state.release && state.release.notes);
+  $('releaseNotesPanel').hidden = !notes;
+  if (notes) {
+    $('releaseVersion').textContent = `v${state.release.version}`;
+    $('releaseAsset').textContent = state.release.assetName || 'sem artefato';
+    const when = state.release.publishedAt ? new Date(state.release.publishedAt).toLocaleDateString('pt-BR') : '';
+    $('releaseDate').textContent = when ? `publicado em ${when}` : 'release do GitHub';
+    $('releaseNotes').textContent = state.release.notes;
+  }
+
+  const hint = $('updateHint');
+  if (state.supported) {
+    hint.textContent = `AppImage: ${state.appImagePath}. A substituição é atômica: a versão em uso continua funcionando até o reinício.`;
+  } else {
+    hint.textContent = 'Executável direto detectado: a verificação funciona, mas a instalação automática requer o AppImage. Baixe o arquivo na release do GitHub.';
+  }
+}
+
 function render(data) {
   current = data;
   const cfg = data.config;
   const isOff = data.state === 'off';
 
+  if (data.version) $('footVersion').textContent = `v${data.version}`;
   document.querySelector('.status-card').classList.toggle('is-off', isOff);
   $('statusTitle').textContent = isOff ? 'Tela apagada' : 'Tela acesa';
   $('sideState').textContent = isOff ? 'Tela apagada' : 'Tela acesa';
@@ -270,4 +350,6 @@ setInterval(tickClock, 500);
 
 window.api.onState(render);
 window.api.getState().then((data) => { render(data); });
+window.api.onUpdate(renderUpdate);
+window.api.getUpdateState().then(renderUpdate);
 window.api.isDev().then((dev) => { $('devNote').hidden = !dev; });
