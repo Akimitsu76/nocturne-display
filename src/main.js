@@ -37,6 +37,7 @@ let traySupported = true;
 let lastUpdateStatus = null;
 let lastEvent = { time: null, text: 'Aguardando primeiro ciclo...', kind: 'info' };
 let instanceLockFd = null;
+let moonlightTimer = null;
 let pendingApply = null; // { target: 'on'|'off', reason: 'schedule', ts: number }
 
 function acquireInstanceLock() {
@@ -136,6 +137,34 @@ function startSunshine() {
   }
   logEvent('Não foi possível iniciar o Sunshine automaticamente.', 'warn');
   return false;
+}
+
+// O Moonlight "Acordar PC" envia Wake-on-LAN (sem efeito enquanto o PC já está
+// ligado) e em seguida abre conexões com o Sunshine. Detectar essas conexões
+// permite acender o monitor também quando o pedido veio do Moonlight.
+function moonlightClientActive() {
+  const r = run('ss', ['-tn', '( dport = :47984 or dport = :47989 or dport = :47990 )'], 2000);
+  if (!r.ok || !r.out) return false;
+  return r.out.split('\n').slice(1).some((line) => {
+    const cols = line.trim().split(/\s+/);
+    const peer = cols[4] || '';
+    const host = peer.replace(/:.*$/, '').replace(/^\[|\]$/g, '');
+    return !!host && !['127.0.0.1', '::1', 'localhost'].includes(host);
+  });
+}
+
+function checkMoonlightWake() {
+  if (!config.enabled || appliedState !== 'off' || !sunshineActive()) return;
+  if (!moonlightClientActive()) return;
+  const res = applyState('on');
+  if (!res.ok) return;
+  appliedState = 'on';
+  // Mantém a tela ligada até o próximo horário de acender programado.
+  config.manualOverride = true;
+  saveConfig();
+  if (!sunshineActive()) startSunshine();
+  logEvent('Moonlight pediu para acordar o PC — tela ligada e Sunshine ativo.', 'on');
+  broadcast();
 }
 
 function detectBackend(preferred) {
@@ -860,6 +889,7 @@ if (process.argv.includes('--check') || process.argv.includes('--check-json')) {
       logEvent(`Backend detectado: ${backendLabel(detectBackend(config.backend))}`, 'info');
       tick();
       tickTimer = setInterval(tick, 1000);
+      moonlightTimer = setInterval(checkMoonlightWake, 1000);
 
       updater.setAutoUpdateGetter(() => !!config.autoUpdate);
       updater.start();
@@ -881,6 +911,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   if (tickTimer) clearInterval(tickTimer);
+  if (moonlightTimer) clearInterval(moonlightTimer);
   updater.stop();
 });
 
