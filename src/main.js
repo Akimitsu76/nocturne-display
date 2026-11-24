@@ -31,6 +31,7 @@ let tray = null;
 let appliedState = 'on';
 let lastTarget = null;
 let tickTimer = null;
+let traySupported = true;
 let lastEvent = { time: null, text: 'Aguardando primeiro ciclo...', kind: 'info' };
 
 /* ------------------------------------------------------------------ utils */
@@ -86,6 +87,14 @@ function run(cmd, args, timeout = 5000) {
 
 function detectBackend(preferred) {
   if (preferred && preferred !== 'auto') return preferred;
+
+  // O Niri não é wlroots: wlr-randr consegue ligar, mas falha ao desligar.
+  // O IPC nativo dele deve sempre ter prioridade quando a sessão é Niri.
+  if (hasCmd('niri')) {
+    const running = !!process.env.NIRI_SOCKET || run('pgrep', ['-x', 'niri'], 2000).ok;
+    if (running) return 'niri';
+  }
+
   const wayland = !!process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland';
   if (wayland) {
     if (hasCmd('kscreen-doctor')) return 'kscreen';
@@ -100,6 +109,7 @@ function detectBackend(preferred) {
 
 function backendLabel(backend) {
   return {
+    niri: 'Niri (IPC nativo)',
     kscreen: 'KDE / KScreen (Wayland)',
     wlr: 'wlroots / sway / Hyprland',
     xrandr: 'X11 / xrandr',
@@ -111,8 +121,61 @@ function backendLabel(backend) {
 
 /* --------------------------------------------------------------- outputs */
 
+function niriOutputsFromJson(text) {
+  const data = JSON.parse(text);
+  const entries = data && !Array.isArray(data) && typeof data === 'object' ? Object.entries(data) : [];
+  return entries
+    .filter(([, v]) => v && typeof v === 'object')
+    .map(([key, v]) => {
+      const name = v.name || key;
+      const mode = (v.modes || [])[v.current_mode] || {};
+      const enabled = typeof v.enabled === 'boolean'
+        ? v.enabled
+        : (v.current_mode !== null && v.current_mode !== undefined) || v.logical !== null && v.logical !== undefined;
+      const label = [v.make, v.model].filter(Boolean).join(' ').trim();
+      const modeLabel = mode.width ? `${mode.width}x${mode.height}${mode.refresh_rate ? `@${(mode.refresh_rate / 1000).toFixed(3)}Hz` : ''}` : 'acesa';
+      return {
+        id: name,
+        name,
+        connected: true,
+        state: enabled ? 'on' : 'off',
+        detail: label ? `${label} · ${enabled ? modeLabel : 'desligada'}` : `${name} · ${enabled ? modeLabel : 'desligada'}`,
+      };
+    });
+}
+
+function niriOutputsFromText(text) {
+  return text.split(/^Output:\s*/m).slice(1).map((block) => {
+    const first = block.split('\n')[0].trim();
+    const name = first.split(/\s+\(/)[0].split(/\s+/)[0];
+    const label = (first.match(/\("([^"]+)"/) || [])[1] || '';
+    const enabled = !/^\s*Disabled\b/im.test(block) && !/\bDisabled\b/im.test(block.split('\n').slice(0, 4).join('\n'));
+    return {
+      id: name,
+      name,
+      connected: true,
+      state: enabled ? 'on' : 'off',
+      detail: label ? `${label} · ${enabled ? 'acesa' : 'desligada'}` : `${name} · ${enabled ? 'acesa' : 'desligada'}`,
+    };
+  }).filter((o) => o.name);
+}
+
+function niriListOutputs() {
+  const r = run('niri', ['msg', '--json', 'outputs']);
+  if (r.ok && r.out) {
+    try {
+      const parsed = niriOutputsFromJson(r.out);
+      if (parsed.length) return parsed;
+    } catch { /* tenta formato legível abaixo */ }
+  }
+  const text = run('niri', ['msg', 'outputs']);
+  return niriOutputsFromText(text.ok ? text.out : r.err);
+}
+
 function listOutputs(backend) {
   switch (backend) {
+    case 'niri':
+      return niriListOutputs();
     case 'kscreen': {
       const r = run('kscreen-doctor', ['-o']);
       const out = [];
@@ -229,6 +292,9 @@ function applyState(state, cfg = config) {
   for (const id of list) {
     let r;
     switch (backend) {
+      case 'niri':
+        r = run('niri', ['msg', 'output', String(id), state === 'off' ? 'off' : 'on']);
+        break;
       case 'kscreen':
         r = state === 'off'
           ? run('kscreen-doctor', [`output.${id}.disable`])
@@ -272,7 +338,7 @@ function readState(cfg = config) {
   const outputs = listOutputs(backend);
   const chosen = outputs.filter((o) => id === 'all' || o.id === id);
   if (!chosen.length) return appliedState;
-  if (backend === 'kscreen' || backend === 'xrandr' || backend === 'wlr') {
+  if (backend === 'niri' || backend === 'kscreen' || backend === 'xrandr' || backend === 'wlr') {
     return chosen.every((o) => o.state === 'off') ? 'off' : 'on';
   }
   return chosen.every((o) => o.state === 'off') ? 'off' : 'on';
@@ -374,6 +440,16 @@ function tick() {
 }
 
 /* --------------------------------------------------------------- tray/ui */
+
+function hasTrayHost() {
+  const r = run('gdbus', [
+    'call', '--session',
+    '--dest', 'org.freedesktop.DBus',
+    '--object-path', '/org/freedesktop/DBus',
+    '--method', 'org.freedesktop.DBus.ListNames',
+  ], 3000);
+  return /StatusNotifierWatcher/i.test(r.out);
+}
 
 function trayIcon(state) {
   const p = path.join(ASSETS, 'tray', state === 'off' ? 'off.png' : 'on.png');
@@ -497,7 +573,12 @@ ipcMain.handle('apply', (_e, state) => ({ ...manualApply(state), ...snapshot() }
 ipcMain.handle('list-outputs', () => listOutputs(detectBackend(config.backend)));
 ipcMain.handle('refresh', () => { tick(); return snapshot(); });
 ipcMain.handle('window-minimize', () => { if (win) win.minimize(); });
-ipcMain.handle('window-hide', () => { if (win) win.hide(); });
+ipcMain.handle('window-hide', () => {
+  if (!win) return;
+  // Sem host de bandeja (comum no Niri), minimizar é mais seguro que esconder:
+  // a janela continua acessível pela lista de janelas do compositor.
+  if (traySupported) win.hide(); else win.minimize();
+});
 ipcMain.handle('window-maximize', () => {
   if (!win) return;
   if (win.isMaximized()) win.unmaximize(); else win.maximize();
@@ -607,11 +688,14 @@ if (process.argv.includes('--check') || process.argv.includes('--check-json')) {
     app.on('second-instance', () => showWindow());
 
     app.whenReady().then(() => {
-      tray = new Tray(trayIcon(appliedState));
-      tray.on('click', () => showWindow());
+      traySupported = detectBackend(config.backend) !== 'niri' || hasTrayHost();
+      if (traySupported) {
+        tray = new Tray(trayIcon(appliedState));
+        tray.on('click', () => showWindow());
+      }
 
       const startMin = process.argv.includes('--minimized') || config.startMinimized;
-      createWindow(startMin);
+      createWindow(startMin && traySupported);
 
       appliedState = readState();
       logEvent(`Backend detectado: ${backendLabel(detectBackend(config.backend))}`, 'info');

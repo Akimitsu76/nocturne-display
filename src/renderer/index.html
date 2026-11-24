@@ -205,6 +205,7 @@
         <div class="select-row">
           <select id="backendSelect" class="styled-select">
             <option value="auto">Automático (recomendado)</option>
+            <option value="niri">Niri (IPC nativo)</option>
             <option value="kscreen">KDE / KScreen (Wayland)</option>
             <option value="wlr">wlroots (Sway / Hyprland)</option>
             <option value="xrandr">X11 / xrandr</option>
@@ -213,7 +214,7 @@
           </select>
           <button class="btn btn-ghost small" id="btnRescan"><span class="btn-glyph">⟳</span> Procurar telas</button>
         </div>
-        <div class="hint" id="backendHint">Dica: em Wayland com KDE use KScreen. Em X11 use xrandr. DPMS apenas apaga a luz de fundo e preserva a captura do Sunshine.</div>
+        <div class="hint" id="backendHint">Dica: no Niri use o IPC nativo (niri msg output). Em KDE Wayland use KScreen; em X11 use xrandr. DPMS apenas apaga a luz de fundo e preserva a captura do Sunshine.</div>
       </div>
 
       <div class="glass panel output-panel">

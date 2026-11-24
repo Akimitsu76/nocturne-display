@@ -14,7 +14,7 @@ Baixe o AppImage na aba [**Releases**](../../releases). Também é possível com
 ```bash
 npm install
 npm run build
-# sai em dist/Nocturne-Display-1.0.0-x86_64.AppImage
+# sai em dist/Nocturne-Display-1.1.0-x86_64.AppImage
 ```
 
 ## Uso
@@ -37,15 +37,21 @@ ao voltar da suspensão.
 
 | Sessão | Backend | Comando |
 |---|---|---|
+| Niri (Wayland) | IPC nativo | `niri msg output ... on/off` |
 | KDE Wayland | KScreen | `kscreen-doctor` |
 | Sway / Hyprland / wlroots | wlroots | `wlr-randr` |
 | X11 | xrandr | `xrandr --output ... --off / --auto` |
 | Monitor DDC/CI | ddcutil | `ddcutil setvcp d6 00/01` |
 | X11 (alternativa) | DPMS | `xset dpms force off/on` |
 
-Se nada for detectado, instale um destes: `kscreen-doctor` (KDE), `wlr-randr`
+No Niri, o app usa o IPC nativo (`niri msg --json outputs` para listar/ler o estado) e
+`niri msg output <nome> on|off` para ligar/desligar. Isso evita o `wlr-randr`, que falha
+ao desligar saídas no Niri por ele não implementar `wlr-output-management`.
+
+Se nada for detectado, instale um destes: `niri`, `kscreen-doctor` (KDE), `wlr-randr`
 (wlroots), `xorg-xrandr` (X11) ou `ddcutil` (DDC/CI). Também é possível forçar o
-backend manualmente na aba **Saídas**.
+backend manualmente na aba **Saídas**. Em sessões Niri sem host de bandeja, o botão
+`×` minimiza a janela em vez de escondê-la, para você sempre poder restaurá-la.
 
 ## Moonlight / Sunshine
 
