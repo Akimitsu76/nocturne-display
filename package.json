@@ -1,6 +1,6 @@
 {
   "name": "nocturne-display",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "Vigília Noturna — agendador de monitor para Sunshine + Moonlight com estética gótica e Frutiger Aero",
   "desktopName": "Nocturne Display",
   "main": "src/main.js",

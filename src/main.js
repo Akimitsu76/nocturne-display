@@ -1,7 +1,7 @@
 'use strict';
 
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, powerMonitor, dialog } = require('electron');
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -13,6 +13,9 @@ const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const AUTOSTART_DIR = path.join(os.homedir(), '.config', 'autostart');
 const AUTOSTART_FILE = path.join(AUTOSTART_DIR, 'nocturne-display.desktop');
 const ASSETS = path.join(__dirname, '..', 'assets');
+const SUNSHINE_CONF = path.join(os.homedir(), '.config', 'sunshine', 'sunshine.conf');
+const SUNSHINE_RESTART_COOLDOWN_MS = Number(process.env.NOCTURNE_SUNSHINE_COOLDOWN_MS || 30_000);
+const SUNSHINE_MAX_RETRIES = 60; // até ~4 min esperando streaming terminar ou saída voltar
 
 const DEFAULTS = {
   enabled: true,
@@ -41,6 +44,13 @@ let instanceLockFd = null;
 let moonlightTimer = null;
 let pendingApply = null; // { target: 'on'|'off', reason: 'schedule', ts: number }
 let scheduleHoldUntil = null; // novos horários só valem no próximo limite
+let sunshineGeneration = 1; // incrementado em cada despertar real (tela/resume)
+let sunshineReason = 'startup';
+let lastSunshineGeneration = -1;
+let lastSunshineRestartAt = 0;
+let ensuringSunshinePromise = null;
+let sunshineRetryTimer = null;
+let lastSunshineNoticeKey = null;
 if (config.scheduleStartsAt && Number(config.scheduleStartsAt) > Date.now()) {
   scheduleHoldUntil = Number(config.scheduleStartsAt);
 } else if (config.scheduleStartsAt) {
@@ -137,24 +147,231 @@ function sunshineActive() {
   return r.ok && !!r.out;
 }
 
-function startSunshine() {
-  // Reinicia o serviço mesmo se ele já estiver rodando: o Sunshine inicializado
-  // enquanto a tela estava apagada fica sem captura de vídeo e só volta a
-  // funcionar depois de um restart com o monitor ligado.
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const SUNSHINE_RESTART_LOGS = {
+  startup: 'Sunshine reiniciado na inicialização com a tela ligada; captura pronta.',
+  schedule: 'Horário de acender chegou — Sunshine reiniciado com a tela ligada; captura pronta.',
+  moonlight: 'Moonlight pediu para acordar — Sunshine reiniciado com a tela ligada; captura pronta.',
+  manual: 'Tela ligada manualmente — Sunshine reiniciado com a tela ligada; captura pronta.',
+  resume: 'PC acordou — Sunshine reiniciado com a tela ligada; captura pronta.',
+};
+
+function noticeOnce(key, text, kind = 'info') {
+  if (lastSunshineNoticeKey === key) return;
+  lastSunshineNoticeKey = key;
+  logEvent(text, kind);
+}
+
+// No Niri o backend wlroots do Sunshine precisa de capture=wlr. Ajusta apenas
+// essa chave, preservando comentários, seções e todas as outras opções.
+function ensureSunshineCaptureConfig() {
+  if (detectBackend(config.backend) !== 'niri') return;
+  try {
+    if (!fs.existsSync(SUNSHINE_CONF)) return;
+    const raw = fs.readFileSync(SUNSHINE_CONF, 'utf8');
+    const lines = raw.split(/\r?\n/);
+    let found = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      if (/^\s*[;#]/.test(lines[i])) continue;
+      const m = lines[i].match(/^(\s*capture\s*=\s*)(.*?)(\s*(?:#.*)?)$/i);
+      if (!m) continue;
+      found = true;
+      if (m[2].trim().toLowerCase() !== 'wlr') {
+        lines[i] = `${m[1]}wlr${m[3] || ''}`;
+        fs.writeFileSync(SUNSHINE_CONF, lines.join('\n'));
+        logEvent('sunshine.conf: capture ajustado para wlr (backend Niri).', 'info');
+      }
+      break;
+    }
+
+    if (!found) {
+      const inputIdx = lines.findIndex((l) => /^\s*\[input\]\s*$/i.test(l));
+      if (inputIdx >= 0) lines.splice(inputIdx + 1, 0, 'capture = wlr');
+      else {
+        if (lines.length && lines[lines.length - 1] !== '') lines.push('');
+        lines.push('capture = wlr', '');
+      }
+      fs.writeFileSync(SUNSHINE_CONF, lines.join('\n'));
+      logEvent('sunshine.conf: capture = wlr adicionado para o backend Niri.', 'info');
+    }
+  } catch (err) {
+    logEvent(`Não foi possível ajustar capture=wlr no sunshine.conf: ${err.message}`, 'warn');
+  }
+}
+
+// O Niri só tem captura útil quando a saída tem modo atual e região lógica.
+// Verificamos isso no JSON do IPC antes de reiniciar o Sunshine.
+function niriReadyFromJson(text, cfg) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return { ready: false, detail: 'JSON inválido do niri' };
+  }
+  if (!data || Array.isArray(data) || typeof data !== 'object') {
+    return { ready: false, detail: 'resposta inesperada do niri' };
+  }
+
+  const entries = Object.entries(data).filter(([, v]) => v && typeof v === 'object');
+  const wantedId = cfg.output && cfg.output !== 'auto' && cfg.output !== 'all'
+    ? String(cfg.output) : null;
+  const candidates = wantedId
+    ? entries.filter(([key, v]) => String(v.name || key) === wantedId)
+    : entries;
+
+  const ready = candidates.some(([, v]) => {
+    const idx = v.current_mode;
+    const mode = Array.isArray(v.modes) && Number.isInteger(idx) ? v.modes[idx] : null;
+    const hasMode = !!mode && Number(mode.width) > 0 && Number(mode.height) > 0;
+    const logical = v.logical;
+    const lw = Array.isArray(logical) ? logical[2] : logical && logical.width;
+    const lh = Array.isArray(logical) ? logical[3] : logical && logical.height;
+    const hasLogical = Number(lw) > 0 && Number(lh) > 0;
+    const enabled = typeof v.enabled === 'boolean' ? v.enabled : (hasMode && hasLogical);
+    return enabled && hasMode && hasLogical;
+  });
+
+  return {
+    ready,
+    detail: ready
+      ? 'saída com current_mode e logical válidos'
+      : `current_mode/logical inválidos${wantedId ? ` em ${wantedId}` : ''}`,
+  };
+}
+
+function videoReadyInfo() {
+  const backend = detectBackend(config.backend);
+  if (backend === 'none') return { ready: false, detail: 'sem backend de vídeo' };
+
+  if (backend === 'niri') {
+    const r = run('niri', ['msg', '--json', 'outputs'], 3000);
+    if (!r.ok || !r.out) return { ready: false, detail: r.err || 'niri sem resposta' };
+    return niriReadyFromJson(r.out, config);
+  }
+
+  const list = targets(config, backend);
+  const chosen = list.filter((id) => config.output === 'auto' || config.output === 'all'
+    || !config.output || id === config.output);
+  if (!chosen.length) return { ready: false, detail: 'nenhuma saída selecionada' };
+  const outs = listOutputs(backend).filter((o) => chosen.includes(o.id) || chosen.includes(o.name));
+  const ready = outs.some((o) => o.state === 'on');
+  return {
+    ready,
+    detail: ready ? `saída ${outs.find((o) => o.state === 'on').name} ligada` : 'saída selecionada apagada',
+  };
+}
+
+// Uma sessão de streaming em andamento não deve ser interrompida por restart.
+function streamingSessionActive() {
+  const r = run('ss', ['-tn', 'state', 'established', '( dport = :47984 or dport = :47989 or dport = :47990 )'], 2000);
+  if (!r.ok || !r.out) return false;
+  return r.out.split('\n').slice(1).some((line) => {
+    const cols = line.trim().split(/\s+/);
+    const peer = cols[4] || '';
+    const host = peer.replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
+    return !!host && !['127.0.0.1', '::1', 'localhost'].includes(host);
+  });
+}
+
+async function restartSunshine() {
   const r = run('systemctl', ['--user', 'restart', 'sunshine'], 12000);
-  if (r.ok) {
-    logEvent('Sunshine reiniciado com a tela ligada — captura de vídeo pronta.', 'info');
-    return true;
-  }
-  // Fallback para sistemas sem o serviço de usuário.
+  if (r.ok) return true;
+
+  // Fallback para sistemas sem o serviço de usuário: encerra o processo antigo
+  // e inicia um único Sunshine destacado do app.
   run('pkill', ['-x', 'sunshine'], 3000);
-  const s = run('sunshine', [], 5000);
-  if (s.ok) {
-    logEvent('Sunshine iniciado após despertar da tela.', 'info');
-    return true;
+  try {
+    const child = spawn('sunshine', [], {
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env },
+    });
+    child.on('error', (err) => logEvent(`Falha ao iniciar o Sunshine: ${err.message}`, 'error'));
+    child.unref();
+    await delay(500);
+    return sunshineActive();
+  } catch (err) {
+    logEvent(`Falha ao iniciar o Sunshine: ${err.message}`, 'error');
+    return false;
   }
-  logEvent('Não foi possível iniciar o Sunshine automaticamente.', 'warn');
-  return false;
+}
+
+function scheduleSunshineRetry(reason, force, retry) {
+  if (sunshineRetryTimer || retry > SUNSHINE_MAX_RETRIES) return;
+  sunshineRetryTimer = setTimeout(() => {
+    sunshineRetryTimer = null;
+    ensureSunshineReady({ reason, force, retry });
+  }, 4000);
+}
+
+// Único ponto de entrada para garantir captura do Sunshine. Chamado no startup,
+// ao acender pelo agendador/Moonlight/ação manual e no resume do powerMonitor.
+async function ensureSunshineReady({ reason = 'screen', force = false, retry = 0 } = {}) {
+  // Chamadas disparadas por um evento (retry=0) atualizam o motivo vigente;
+  // reintentos apenas consomem o motivo mais recente.
+  if (retry === 0) sunshineReason = reason;
+  ensureSunshineCaptureConfig();
+  if (ensuringSunshinePromise) return ensuringSunshinePromise;
+
+  const generation = sunshineGeneration;
+  if (!force && lastSunshineGeneration === generation) return false;
+
+  ensuringSunshinePromise = (async () => {
+    // Garante que a atribuição de ensuringSunshinePromise aconteça antes de
+    // qualquer retorno síncrono do corpo da função.
+    await Promise.resolve();
+    try {
+      if (streamingSessionActive()) {
+        noticeOnce(`stream:${generation}:${sunshineReason}`, 'Streaming ativo — restart do Sunshine adiado para não interromper a sessão.', 'info');
+        scheduleSunshineRetry(sunshineReason, force, retry + 1);
+        return false;
+      }
+
+      if (!force && Date.now() - lastSunshineRestartAt < SUNSHINE_RESTART_COOLDOWN_MS) {
+        lastSunshineGeneration = sunshineGeneration;
+        return false;
+      }
+
+      let info = { ready: false, detail: '' };
+      const attempts = sunshineReason === 'startup' ? 2 : 4;
+      for (let i = 0; i < attempts; i++) {
+        info = videoReadyInfo();
+        if (info.ready) break;
+        if (i < attempts - 1) await delay(700);
+      }
+
+      if (!info.ready) {
+        noticeOnce(`novideo:${generation}:${sunshineReason}`, `Sunshine não reiniciado: ${info.detail}.`, 'warn');
+        scheduleSunshineRetry(sunshineReason, force, retry + 1);
+        return false;
+      }
+
+      const restarted = await restartSunshine();
+      if (!restarted) {
+        noticeOnce(`falha:${generation}:${sunshineReason}`, 'Não foi possível reiniciar o Sunshine com a tela ligada.', 'warn');
+        return false;
+      }
+
+      // Consome também gerações criadas enquanto esta chamada estava em voo:
+      // o restart recém-feito já cobre qualquer despertar seguinte próximo.
+      lastSunshineGeneration = sunshineGeneration;
+      lastSunshineRestartAt = Date.now();
+      lastSunshineNoticeKey = null;
+      logEvent(SUNSHINE_RESTART_LOGS[sunshineReason] || 'Sunshine reiniciado com a tela ligada; captura pronta.', 'info');
+      broadcast();
+      return true;
+    } catch (err) {
+      logEvent(`Erro ao garantir Sunshine: ${err.message}`, 'error');
+      broadcast();
+      return false;
+    } finally {
+      ensuringSunshinePromise = null;
+    }
+  })();
+
+  return ensuringSunshinePromise;
 }
 
 // O Moonlight "Acordar PC" envia Wake-on-LAN (sem efeito enquanto o PC já está
@@ -174,13 +391,12 @@ function moonlightClientActive() {
 function checkMoonlightWake() {
   if (!config.enabled || appliedState !== 'off' || !sunshineActive()) return;
   if (!moonlightClientActive()) return;
-  const res = applyState('on');
+  const res = applyState('on', config, 'moonlight');
   if (!res.ok) return;
   appliedState = 'on';
   // Mantém a tela ligada até o próximo horário de acender programado.
   config.manualOverride = true;
   saveConfig();
-  if (!sunshineActive()) startSunshine();
   logEvent('Moonlight pediu para acordar o PC — tela ligada e Sunshine ativo.', 'on');
   broadcast();
 }
@@ -371,7 +587,7 @@ function targets(cfg, backend) {
 
 /* ----------------------------------------------------------------- power */
 
-function applyState(state, cfg = config) {
+function applyState(state, cfg = config, reason = 'screen') {
   const backend = detectBackend(cfg.backend);
   const list = targets(cfg, backend);
   const results = [];
@@ -417,6 +633,14 @@ function applyState(state, cfg = config) {
 
   const ok = results.length > 0 && results.every((x) => x.ok);
   const fail = results.filter((x) => !x.ok).map((x) => `${x.id}: ${x.detail}`).join(' | ');
+
+  // Toda transição para "on" é um novo despertar: a captura do Sunshine precisa
+  // ser recriada com a saída já disponível. ensureSunshineReady é idempotente.
+  if (state === 'on' && ok) {
+    sunshineGeneration += 1;
+    ensureSunshineReady({ reason });
+  }
+
   return {
     ok,
     message: ok
@@ -528,6 +752,8 @@ function snapshot() {
     scheduleStartsAt: scheduleHoldUntil ? new Date(scheduleHoldUntil).toISOString() : null,
     pending: !!pendingApply,
     pendingTarget: pendingApply ? pendingApply.target : null,
+    sunshineRestartAt: lastSunshineRestartAt ? new Date(lastSunshineRestartAt).toISOString() : null,
+    sunshinePending: lastSunshineGeneration !== sunshineGeneration,
   };
 }
 
@@ -592,16 +818,11 @@ function tick() {
     }
 
     if (config.enabled && !config.manualOverride && target !== appliedState) {
-      const res = applyState(target);
+      const res = applyState(target, config, 'schedule');
       if (res.ok) {
         logEvent(`Ação automática: tela ${target === 'off' ? 'apagada' : 'ligada'} · ${res.message}`, target === 'off' ? 'off' : 'on');
         appliedState = target;
         pendingApply = null;
-        // Ao despertar a tela, garante que o Sunshine esteja rodando para receber
-        // pedidos de "Acordar PC" via Moonlight.
-        if (target === 'on' && !sunshineActive()) {
-          startSunshine();
-        }
       } else {
         logEvent(`Falha ao ${target === 'off' ? 'apagar' : 'ligar'}: ${res.message}`, 'error');
       }
@@ -656,7 +877,7 @@ function updateTray(data) {
 }
 
 function manualApply(state) {
-  const res = applyState(state);
+  const res = applyState(state, config, 'manual');
   if (res.ok) {
     appliedState = state;
     config.manualOverride = true;
@@ -773,14 +994,11 @@ ipcMain.handle('set-config', (_e, patch) => {
 ipcMain.handle('confirmApply', (_e) => {
   if (!pendingApply) return { ...snapshot(), pending: false };
   const { target } = pendingApply;
-  const res = applyState(target);
+  const res = applyState(target, config, 'manual');
   if (res.ok) {
     appliedState = target;
     pendingApply = null;
     logEvent(`Confirmação do usuário: tela ${target === 'off' ? 'apagada' : 'ligada'} agora.`, target === 'off' ? 'off' : 'on');
-    if (target === 'on' && !sunshineActive()) {
-      startSunshine();
-    }
   } else {
     logEvent(`Falha ao aplicar confirmação: ${res.message}`, 'error');
   }
@@ -819,6 +1037,14 @@ ipcMain.handle('window-maximize', () => {
 });
 ipcMain.handle('quit', () => app.quit());
 ipcMain.handle('dev-mode', () => IS_DEV);
+// Disponível apenas em desenvolvimento: permite testar o caminho de resume sem
+// precisar suspender a máquina.
+if (IS_DEV) {
+  ipcMain.handle('dev-resume', () => {
+    powerMonitor.emit('resume');
+    return snapshot();
+  });
+}
 
 /* --------------------------------------------------------------- updates */
 
@@ -950,9 +1176,9 @@ if (process.argv.includes('--check') || process.argv.includes('--check-json')) {
 
       appliedState = readState();
       logEvent(`Backend detectado: ${backendLabel(detectBackend(config.backend))}`, 'info');
-      // Garante que o Sunshine seja iniciado/reiniciado com o estado real do
-      // monitor: se ele tiver começado com a tela apagada, a captura falha.
-      startSunshine();
+      // Garante que o Sunshine seja reiniciado com o estado real do monitor:
+      // se ele tiver começado com a tela apagada, a captura falha.
+      ensureSunshineReady({ reason: 'startup' });
       tick();
       tickTimer = setInterval(tick, 1000);
       moonlightTimer = setInterval(checkMoonlightWake, 1000);
@@ -962,6 +1188,8 @@ if (process.argv.includes('--check') || process.argv.includes('--check-json')) {
 
       powerMonitor.on('resume', () => {
         logEvent('Sistema retomado da suspensão — reavaliando agenda', 'info');
+        sunshineGeneration += 1;
+        ensureSunshineReady({ reason: 'resume' });
         tick();
       });
 
@@ -978,6 +1206,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   if (tickTimer) clearInterval(tickTimer);
   if (moonlightTimer) clearInterval(moonlightTimer);
+  if (sunshineRetryTimer) clearTimeout(sunshineRetryTimer);
   updater.stop();
 });
 

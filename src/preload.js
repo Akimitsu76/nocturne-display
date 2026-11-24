@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('api', {
   maximize: () => ipcRenderer.invoke('window-maximize'),
   quit: () => ipcRenderer.invoke('quit'),
   isDev: () => ipcRenderer.invoke('dev-mode'),
+  devResume: () => ipcRenderer.invoke('dev-resume'),
   getUpdateState: () => ipcRenderer.invoke('get-update-state'),
   checkUpdates: () => ipcRenderer.invoke('check-updates'),
   installUpdate: () => ipcRenderer.invoke('install-update'),

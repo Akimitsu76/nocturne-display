@@ -14,14 +14,14 @@ Baixe o AppImage na aba [**Releases**](../../releases). Também é possível com
 ```bash
 npm install
 npm run build
-# sai em dist/Nocturne-Display-1.4.1-x86_64.AppImage
+# sai em dist/Nocturne-Display-1.4.3-x86_64.AppImage
 ```
 
 ## Uso
 
 ```bash
-chmod +x Nocturne-Display-1.4.1-x86_64.AppImage
-./Nocturne-Display-1.4.1-x86_64.AppImage
+chmod +x Nocturne-Display-1.4.3-x86_64.AppImage
+./Nocturne-Display-1.4.3-x86_64.AppImage
 ```
 
 1. No **Altar**, defina os horários (ex.: `08:00` apagar, `19:00` acender).
@@ -87,11 +87,26 @@ backend manualmente na aba **Saídas**. Em sessões Niri sem host de bandeja, o 
   `47984/47989/47990`, acende a tela, garante que o Sunshine está ativo e mantém o override
   manual até o próximo horário programado.
 
+### Restart unificado do Sunshine
+
+Sempre que o monitor é acendido pelo agendador, pelo Moonlight ou manualmente — e também no
+evento `resume` após suspend/hibernate — o app chama a mesma rotina
+`ensureSunshineReady()`. Ela espera o Niri reportar uma saída com `current_mode` e `logical`
+válidos e só então executa `systemctl --user restart sunshine` (com fallback para
+`pkill -x sunshine` + `sunshine` quando não há serviço de usuário). Isso evita o erro
+`failed to initialize video capture/encoding` causado por um Sunshine iniciado sem saída.
+
+O restart é idempotente: múltiplos eventos no mesmo ciclo geram apenas um restart, e uma
+sessão de streaming já establishada nunca é interrompida. O log registra
+`PC acordou — Sunshine reiniciado com a tela ligada; captura pronta.` no caminho de `resume`.
+Com o backend Niri, o app mantém `capture = wlr` em `~/.config/sunshine/sunshine.conf`, sem
+sobrescrever outras opções do arquivo.
+
 ## Teste rápido de compatibilidade
 
 ```bash
-./Nocturne-Display-1.4.1-x86_64.AppImage --check
-./Nocturne-Display-1.4.1-x86_64.AppImage --check-json
+./Nocturne-Display-1.4.3-x86_64.AppImage --check
+./Nocturne-Display-1.4.3-x86_64.AppImage --check-json
 ```
 
 Verifica distro/sessão, FUSE, bibliotecas faltando, backend, saídas, agenda, autostart
@@ -106,7 +121,7 @@ está em [`PROMPT-TESTE-RAPIDO.md`](PROMPT-TESTE-RAPIDO.md).
 Se o AppImage não abrir por falta de `libfuse2`:
 
 ```bash
-./Nocturne-Display-1.4.1-x86_64.AppImage --appimage-extract-and-run
+./Nocturne-Display-1.4.3-x86_64.AppImage --appimage-extract-and-run
 ```
 
 ## Licença
