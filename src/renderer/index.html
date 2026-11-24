@@ -18,6 +18,10 @@
 </div>
 
 <div class="shell" id="shell">
+  <div class="gothic-frame" aria-hidden="true">
+    <span class="frame-corner tl">✝</span><span class="frame-corner tr">⚜</span>
+    <span class="frame-corner bl">⚜</span><span class="frame-corner br">✝</span>
+  </div>
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-sigil">
@@ -50,6 +54,12 @@
 
     <div class="sidebar-spacer"></div>
 
+    <div class="candle-row" aria-hidden="true">
+      <div class="candle"><span class="candle-flame"></span><span class="candle-wick"></span><span class="candle-wax"></span></div>
+      <div class="candle tall"><span class="candle-flame"></span><span class="candle-wick"></span><span class="candle-wax"></span></div>
+      <div class="candle short"><span class="candle-flame"></span><span class="candle-wick"></span><span class="candle-wax"></span></div>
+    </div>
+
     <div class="sidebar-status glass-mini">
       <div class="pulse-dot" id="sideDot"></div>
       <div>
@@ -57,7 +67,7 @@
         <div class="side-status-value" id="sideState">Tela acesa</div>
       </div>
     </div>
-    <div class="sidebar-foot"><span id="footVersion">v1.4.3</span> <span>·</span> Sunshine Companion</div>
+    <div class="sidebar-foot"><span id="footVersion">v1.5.0</span> <span>·</span> Sunshine Companion</div>
   </aside>
 
   <main class="main">
@@ -80,31 +90,34 @@
     <section class="view active" id="view-altar">
       <div class="hero">
         <div class="hero-copy">
-          <div class="eyebrow"><span class="eyebrow-line"></span> AUTOMAÇÃO DE VIGÍLIA</div>
+          <div class="eyebrow"><span class="eyebrow-line"></span> ALTAR DOS AGENDAMENTOS</div>
           <h1>Vigília do <em>Monitor</em></h1>
-          <p>Determine a hora em que a tela se apaga e a hora em que desperta. O computador permanece ligado — pronto para o Moonlight quando você voltar.</p>
+          <p>Cada agendamento é um alarme independente: adicione, apague, ligue ou desligue quantos quiser. O computador permanece ligado — pronto para o Moonlight quando você voltar.</p>
         </div>
-        <svg class="rose" viewBox="0 0 200 200" aria-hidden="true">
+        <svg class="rose rune-rose" viewBox="0 0 200 200" aria-hidden="true">
           <defs>
             <linearGradient id="roseGrad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stop-color="#8ef3e4"/><stop offset="1" stop-color="#9b7ce0"/>
+              <stop offset="0" stop-color="#d8b777"/><stop offset="1" stop-color="#a83248"/>
             </linearGradient>
+            <path id="runePath" d="M100,100 m-74,0 a74,74 0 1,1 148,0 a74,74 0 1,1 -148,0" />
           </defs>
           <g class="rose-rotate">
-            <circle cx="100" cy="100" r="88" fill="none" stroke="url(#roseGrad)" stroke-width="1" opacity=".5"/>
-            <circle cx="100" cy="100" r="74" fill="none" stroke="url(#roseGrad)" stroke-width="1" opacity=".35"/>
-            <circle cx="100" cy="100" r="30" fill="none" stroke="url(#roseGrad)" stroke-width="1.5" opacity=".7"/>
-            <circle cx="100" cy="100" r="12" fill="url(#roseGrad)" opacity=".28"/>
+            <circle cx="100" cy="100" r="90" fill="none" stroke="url(#roseGrad)" stroke-width="1" opacity=".45"/>
+            <circle cx="100" cy="100" r="62" fill="none" stroke="url(#roseGrad)" stroke-width="1" opacity=".3"/>
+            <circle cx="100" cy="100" r="30" fill="none" stroke="url(#roseGrad)" stroke-width="1.6" opacity=".7"/>
+            <circle cx="100" cy="100" r="11" fill="url(#roseGrad)" opacity=".3"/>
+            <text class="rune-text" fill="url(#roseGrad)">
+              <textPath href="#runePath">ᚠᚢᚦᚨᚱᚲᚷᚹᚺᚾᛁᛃᛇᛈᛉᛊᛏᛒᛖᛗᛚᛜᛞᛟ</textPath>
+            </text>
             <g stroke="url(#roseGrad)" stroke-width="1.2" opacity=".55">
-              <path d="M100 12 V188 M12 100 H188 M39 39 L161 161 M161 39 L39 161"/>
-              <path d="M62 22 L138 178 M22 62 L178 138 M138 22 L62 178 M178 62 L22 138"/>
+              <path d="M100 28 V172 M56 100 H144 M70 70 L130 130 M130 70 L70 130"/>
             </g>
+            <path d="M100 66 V134 M84 84 H116" stroke="#f0dfb8" stroke-width="2" opacity=".85"/>
             <g fill="url(#roseGrad)" opacity=".8">
               <circle cx="100" cy="26" r="3"/><circle cx="174" cy="100" r="3"/>
               <circle cx="100" cy="174" r="3"/><circle cx="26" cy="100" r="3"/>
             </g>
           </g>
-          <path d="M100 8 L100 192" stroke="#fff" stroke-width=".5" opacity=".12"/>
         </svg>
       </div>
 
@@ -122,72 +135,74 @@
           <div class="status-desc" id="statusDesc">Aguardando a próxima mudança programada.</div>
         </div>
         <div class="status-next">
-          <div class="next-kicker">PRÓXIMO RITUAL</div>
+          <div class="next-kicker">PRÓXIMO AGENDAMENTO</div>
           <div class="next-time" id="nextTime">--:--</div>
           <div class="next-label" id="nextLabel">calculando...</div>
           <div class="next-countdown" id="nextCountdown">--</div>
         </div>
       </div>
 
+      <div class="glass panel schedule-panel">
+        <div class="card-head">
+          <div>
+            <span class="card-title">Agendamentos</span>
+            <span class="card-sub">Ligue, desligue, edite ou apague — como alarmes de celular.</span>
+          </div>
+          <span class="count-badge" id="scheduleCount">0 agendamentos</span>
+        </div>
+
+        <div class="alarm-composer">
+          <label class="composer-field">
+            <span>Horário</span>
+            <input type="time" id="newTime" aria-label="Horário do novo agendamento" />
+          </label>
+          <div class="composer-field">
+            <span>Ação</span>
+            <div class="segmented" id="newAction" role="group" aria-label="Ação do novo agendamento">
+              <button type="button" data-action="off" class="active">☾ Apagar</button>
+              <button type="button" data-action="on">☀ Acender</button>
+            </div>
+          </div>
+          <button class="btn btn-on small" id="btnAddSchedule"><span class="btn-glyph">✚</span> Adicionar</button>
+        </div>
+
+        <div class="alarm-list" id="alarmList"></div>
+
+        <div class="empty-alarms" id="emptyAlarms">
+          <div class="empty-sigil">✝</div>
+          <strong>Nenhum agendamento</strong>
+          <span>O altar está zerado. A tela permanece exatamente como você a deixou.</span>
+        </div>
+
+        <div class="note glass-mini schedule-hold" id="scheduleHoldNote" hidden>
+          ⏳ Agendamento salvo. O novo ciclo começa no próximo horário — a tela atual não será alterada agora.
+        </div>
+      </div>
+
       <div class="timeline-card glass">
         <div class="card-head">
           <div>
-            <span class="card-title">Ciclo das trevas</span>
-            <span class="card-sub">A faixa escura representa o período com a tela apagada</span>
+            <span class="card-title">Linha do tempo</span>
+            <span class="card-sub">Cada marca é um alarme — dourado acende, vinho apaga</span>
           </div>
           <div class="legend">
-            <span class="legend-item"><i class="lg-on"></i>acesa</span>
-            <span class="legend-item"><i class="lg-off"></i>apagada</span>
+            <span class="legend-item"><i class="lg-on"></i>acender</span>
+            <span class="legend-item"><i class="lg-off"></i>apagar</span>
           </div>
         </div>
         <div class="timeline" id="timeline">
           <div class="tl-track"></div>
-          <div class="tl-off" id="tlOff1"></div>
-          <div class="tl-off" id="tlOff2"></div>
-          <div class="tl-marker off-marker" id="tlOffMarker"><span>apagar</span></div>
-          <div class="tl-marker on-marker" id="tlOnMarker"><span>acender</span></div>
+          <div id="timelineMarkers"></div>
           <div class="tl-now" id="tlNow"><span></span></div>
         </div>
         <div class="tl-hours"><span>00</span><span>03</span><span>06</span><span>09</span><span>12</span><span>15</span><span>18</span><span>21</span><span>24</span></div>
-      </div>
-
-      <div class="time-grid">
-        <div class="time-card glass time-off">
-          <div class="time-card-glow"></div>
-          <div class="time-card-head"><span class="time-icon">☾</span><span>Apagar a tela às</span></div>
-          <input type="time" id="offTime" value="08:00" aria-label="Horário para apagar a tela" />
-          <div class="time-card-foot">O monitor entra em repouso. O PC continua ligado.</div>
-        </div>
-        <div class="time-divider">
-          <div class="divider-line"></div><span class="divider-glyph">✧</span><div class="divider-line"></div>
-        </div>
-        <div class="time-card glass time-on">
-          <div class="time-card-glow"></div>
-          <div class="time-card-head"><span class="time-icon">☀</span><span>Acender a tela às</span></div>
-          <input type="time" id="onTime" value="19:00" aria-label="Horário para acender a tela" />
-          <div class="time-card-foot">A tela desperta e o Sunshine volta a transmitir.</div>
-        </div>
       </div>
 
       <div class="actions-row">
         <button class="btn btn-off" id="btnOff"><span class="btn-glyph">☾</span> Apagar agora</button>
         <button class="btn btn-on" id="btnOn"><span class="btn-glyph">☀</span> Acender agora</button>
         <button class="btn btn-ghost" id="btnSync"><span class="btn-glyph">⟳</span> Sincronizar</button>
-        <div class="schedule-toggle">
-          <label class="switch">
-            <input type="checkbox" id="enabled" checked />
-            <span class="slider"></span>
-          </label>
-          <span>Agendamento ativo</span>
-        </div>
-      </div>
-
-      <div class="note glass-mini" id="scheduleWarning" hidden>
-        ⚠ Defina horários diferentes para criar um ciclo válido.
-      </div>
-
-      <div class="note glass-mini schedule-hold" id="scheduleHoldNote" hidden>
-        ⏳ Horário salvo. O novo ciclo começa no próximo horário programado — a tela atual não será alterada agora.
+        <span class="actions-note">Ações manuais são imediatas e não dependem dos alarmes.</span>
       </div>
 
       <div class="note glass-mini moonlight-note">
@@ -242,10 +257,6 @@
       </div>
 
       <div class="glass panel settings-panel">
-        <div class="setting-row">
-          <div class="setting-copy"><strong>Agendamento ativo</strong><span>Executa apagar e acendar nos horários definidos.</span></div>
-          <label class="switch"><input type="checkbox" id="setEnabled" checked /><span class="slider"></span></label>
-        </div>
         <div class="setting-row">
           <div class="setting-copy"><strong>Iniciar com o sistema</strong><span>Cria uma entrada de inicialização automática na sessão.</span></div>
           <label class="switch"><input type="checkbox" id="setAutostart" /><span class="slider"></span></label>
@@ -346,8 +357,8 @@
 <!-- ======================= CONFIRMAÇÃO DE HORÁRIO ======================= -->
 <div class="confirm-backdrop" id="confirmBackdrop" hidden>
   <div class="confirm-dialog glass" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
-    <div class="confirm-sigil" aria-hidden="true">✧</div>
-    <div class="confirm-kicker">NOVO HORÁRIO</div>
+    <div class="confirm-sigil" aria-hidden="true">✝</div>
+    <div class="confirm-kicker">SELO DO HORÁRIO</div>
     <h2 id="confirmTitle">Aplicar horário?</h2>
     <p class="confirm-sub" id="confirmDetail">O novo ciclo começa no próximo horário programado.</p>
     <div class="confirm-actions">

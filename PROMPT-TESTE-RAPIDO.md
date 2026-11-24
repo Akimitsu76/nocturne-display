@@ -4,17 +4,17 @@ Copie o bloco abaixo e cole para o agente de IA na máquina onde estão o Sunshi
 
 ---
 
-Você está na máquina Linux que roda **Sunshine + Tailscale** e recebe conexões **Moonlight**. Acabei de instalar nela o app `Nocturne-Display-1.1.0-x86_64.AppImage` (ele agenda apagar/acender o monitor sem desligar o PC). Preciso de um **teste rápido de compatibilidade e funcionamento**, porque o app precisa funcionar em **qualquer Linux** (X11, Wayland KDE, Niri, wlroots, DDC/CI).
+Você está na máquina Linux que roda **Sunshine + Tailscale** e recebe conexões **Moonlight**. Acabei de instalar nela o app `Nocturne-Display-1.5.0-x86_64.AppImage` (ele agenda apagar/acender o monitor sem desligar o PC). Preciso de um **teste rápido de compatibilidade e funcionamento**, porque o app precisa funcionar em **qualquer Linux** (X11, Wayland KDE, Niri, wlroots, DDC/CI).
 
 **Regras:** não use `sudo` sem me pedir; não deixe a tela apagada no fim; não altere minha config permanentemente; restaure tudo e apague arquivos temporários. Relate com ✅ / ⚠️ / ❌ e evidências (comando + saída).
 
-Caminho do app: `~/Nocturne-Display-1.1.0-x86_64.AppImage` (se estiver em outro lugar, descubra com `find ~ -name 'Nocturne-Display*.AppImage'`).
+Caminho do app: `~/Nocturne-Display-1.5.0-x86_64.AppImage` (se estiver em outro lugar, descubra com `find ~ -name 'Nocturne-Display*.AppImage'`).
 
 ## 1. Diagnóstico embutido
 
 ```bash
-chmod +x ~/Nocturne-Display-1.1.0-x86_64.AppImage
-~/Nocturne-Display-1.1.0-x86_64.AppImage --check
+chmod +x ~/Nocturne-Display-1.5.0-x86_64.AppImage
+~/Nocturne-Display-1.5.0-x86_64.AppImage --check
 ```
 
 Analise cada item: sistema/sessão, FUSE, bibliotecas faltando, backend detectado, saídas encontradas, agenda, autostart e se o processo `sunshine` está ativo. Se der erro de FUSE, rode com `--appimage-extract-and-run --check` e diga isso no relatório. Para leitura fácil, `--check-json` também funciona.
@@ -56,12 +56,14 @@ chmod +x /tmp/nocturne-test/kscreen-doctor
 
 Se eu dissim "pode testar de verdade": use **DPMS por no máximo 3 segundos** com restauração garantida por `trap` (ou os botões da interface), confirme que a tela volta e que o Moonlight consegue conectar depois. Nunca encerre deixando a tela apagada.
 
-## 5. Agenda e persistência
+## 5. Agendamentos e persistência
 
-- Com `enabled:false`, confirme a lógica cross-midnight (ex.: `22:00` → `06:00` resulta em alvo `off` à noite e `on` de manhã).
+- Abra o app com um `HOME` temporário: ele **deve abrir zerado**, sem nenhum alarme e sem enviar comando ao monitor.
+- Crie alarmes `22:00` → apagar e `06:00` → acender. Confirme com **Sim** e verifique que nada é aplicado retroativamente (aviso de início do ciclo no Altar).
+- Desligue e ligue um alarme pelo interruptor; apague outro com `✕`. Confira que o estado da tela não muda com essas ações.
+- Sem alarmes ativos, o alvo do `--check-json` deve ser `nenhum (controle manual)` e `failures: 0`.
 - Ative "Iniciar com o sistema" na aba *Rituais* e leia `~/.config/autostart/nocturne-display.desktop`: o campo `Exec=` **precisa apontar para o seu AppImage**, não para um binário de desenvolvimento. Depois desative.
-- Restaure `~/.config/nocturne-display/config.json` para: `08:00` / `19:00`, `enabled:true`, `backend:auto`, `output:auto`, `autostart:false`.
-- Encerre o processo do app e remova `/tmp/nocturne-test`.
+- Encerre o processo do app e remova o `HOME` temporário e `/tmp/nocturne-test`.
 
 ## 6. Relatório final
 

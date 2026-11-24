@@ -4,8 +4,12 @@ AppImage Linux (x86_64) que agenda **apagar** e **acender** o monitor sem deslig
 Feito para quem usa **Sunshine + Tailscale + Moonlight**: você dorme com a tela apagada e,
 no horário escolhido, ela desperta sozinha para você conectar de fora de casa.
 
-> Interface gótica com estética Frutiger Aero: vidro fosco, partículas flutuantes,
-> rosácea animada, fonte Cinzel, orbes pulsantes e transições suaves.
+> **Abre zerado:** nenhum horário vem pré-configurado e a tela não é alterada ao iniciar.
+> Você cria quantos agendamentos quiser, como alarmes de celular: cada um com horário,
+> ação (apagar ou acender), ligação/desligação própria e botão de excluir.
+
+> Interface gótica com estética Frutiger Aero: vidro fosco, velas de altar, runas,
+> cruzes, molduras ornamentais, partículas, fonte Cinzel e transições suaves.
 
 ## Download
 
@@ -14,36 +18,50 @@ Baixe o AppImage na aba [**Releases**](../../releases). Também é possível com
 ```bash
 npm install
 npm run build
-# sai em dist/Nocturne-Display-1.4.3-x86_64.AppImage
+# sai em dist/Nocturne-Display-1.5.0-x86_64.AppImage
 ```
 
 ## Uso
 
 ```bash
-chmod +x Nocturne-Display-1.4.3-x86_64.AppImage
-./Nocturne-Display-1.4.3-x86_64.AppImage
+chmod +x Nocturne-Display-1.5.0-x86_64.AppImage
+./Nocturne-Display-1.5.0-x86_64.AppImage
 ```
 
-1. No **Altar**, defina os horários (ex.: `08:00` apagar, `19:00` acender).
-2. Ative o **Agendamento ativo**.
-3. Teste com **Apagar agora** / **Acender agora**.
-4. Em **Rituais**, ative **Iniciar com o sistema** e **Iniciar oculto na bandeja**.
-5. O botão `×` apenas esconde a janela: o app continua na bandeja mantendo a agenda.
+1. No **Altar**, escolha o horário, escolha **Apagar** ou **Acender** e clique em **Adicionar**.
+2. Repita para criar outros alarmes — por exemplo `08:00` apagar e `19:00` acender.
+3. Use o interruptor de cada linha para **ligar/desligar** aquele agendamento sem apagá-lo;
+   o botão `✕` remove o agendamento.
+4. Teste com **Apagar agora** / **Acender agora** (sempre imediatos).
+5. Em **Rituais**, ative **Iniciar com o sistema** e **Iniciar oculto na bandeja**.
+6. O botão `×` apenas esconde a janela: o app continua na bandeja mantendo a agenda.
 
-Horários *cross-midnight* funcionam (ex.: `22:00` → `06:00`). O app reavalia a agenda
-ao voltar da suspensão.
+Horários *cross-midnight* funcionam naturalmente: o estado é definido pelo alarme mais
+recente antes de agora. O app reavalia os alarmes ao voltar da suspensão.
 
-### Agendamento com confirmação
+### Agendamentos com confirmação
 
-Ao alterar **Apagar a tela às** ou **Acender a tela às**, o app abre a confirmação
+Ao adicionar ou alterar o horário/ação de um alarme, o app abre a confirmação
 **Aplicar horário HH:MM?** com **Sim** / **Não**. Nada é salvo e nenhum comando é enviado
-ao monitor antes do `Sim`; `Não` (ou `Esc`) descarta a alteração.
+ao monitor antes do `Sim`; `Não` (ou `Esc`) descarta a alteração. Ligar, desligar e excluir
+um alarme são ações imediatas, como no aplicativo de alarme do celular.
 
-O novo ciclo entra em vigor apenas no **próximo horário programado**, como um despertador.
-Se você estiver com a tela acesa às `01:00` e definir `desligar 00:00` / `ligar 08:00`,
-a tela **não apaga na hora**: ela segue acesa até o próximo limite. Um aviso no **Altar**
+O alarme confirmado entra em vigor apenas no **próximo limite**, nunca de forma retroativa.
+Se você estiver com a tela acesa às `01:00` e criar um alarme para apagar às `00:00`,
+a tela **não apaga na hora**: segue acesa até o próximo horário. Um aviso no **Altar**
 mostra quando o ciclo começa, e esse estado sobrevive a uma reinicialização do app.
-**Apagar agora** / **Acender agora** continuam imediatos.
+
+### Configuração antiga
+
+Configurações do formato antigo (`enabled`, `offTime`, `onTime`) são descartadas na
+primeira execução desta versão. Nenhum alarme é criado a partir delas: o app abre zerado
+e mantém as demais preferências (backend, saída, autostart, áudio, atualizações).
+
+### Como o estado é decidido
+
+Com vários alarmes ativos, o estado desejado é a **ação do alarme mais recente antes de agora**.
+Se houver dois alarmes no mesmo horário, **acender** tem prioridade sobre **apagar**.
+Sem nenhum alarme ativo o app não toma nenhuma atitude automática: a tela fica como você a deixou.
 
 ## Atualizações automáticas
 
@@ -105,8 +123,8 @@ sobrescrever outras opções do arquivo.
 ## Teste rápido de compatibilidade
 
 ```bash
-./Nocturne-Display-1.4.3-x86_64.AppImage --check
-./Nocturne-Display-1.4.3-x86_64.AppImage --check-json
+./Nocturne-Display-1.5.0-x86_64.AppImage --check
+./Nocturne-Display-1.5.0-x86_64.AppImage --check-json
 ```
 
 Verifica distro/sessão, FUSE, bibliotecas faltando, backend, saídas, agenda, autostart
@@ -121,7 +139,7 @@ está em [`PROMPT-TESTE-RAPIDO.md`](PROMPT-TESTE-RAPIDO.md).
 Se o AppImage não abrir por falta de `libfuse2`:
 
 ```bash
-./Nocturne-Display-1.4.3-x86_64.AppImage --appimage-extract-and-run
+./Nocturne-Display-1.5.0-x86_64.AppImage --appimage-extract-and-run
 ```
 
 ## Licença

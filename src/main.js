@@ -6,6 +6,13 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const updater = require('./updater');
+const {
+  sanitizeSchedules,
+  enabledAlarms,
+  desiredState,
+  nextChange,
+  fmtTime,
+} = require('./schedule');
 
 const IS_DEV = !app.isPackaged || process.argv.includes('--dev');
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'nocturne-display');
@@ -18,9 +25,8 @@ const SUNSHINE_RESTART_COOLDOWN_MS = Number(process.env.NOCTURNE_SUNSHINE_COOLDO
 const SUNSHINE_MAX_RETRIES = 60; // até ~4 min esperando streaming terminar ou saída voltar
 
 const DEFAULTS = {
-  enabled: true,
-  offTime: '08:00',
-  onTime: '19:00',
+  // App chega zerado: nenhum agendamento, nenhuma ação automática.
+  schedules: [],
   output: 'auto',
   backend: 'auto',
   startMinimized: false,
@@ -42,8 +48,7 @@ let lastUpdateStatus = null;
 let lastEvent = { time: null, text: 'Aguardando primeiro ciclo...', kind: 'info' };
 let instanceLockFd = null;
 let moonlightTimer = null;
-let pendingApply = null; // { target: 'on'|'off', reason: 'schedule', ts: number }
-let scheduleHoldUntil = null; // novos horários só valem no próximo limite
+let scheduleHoldUntil = null; // novos horários só valem no próximo alarme
 let sunshineGeneration = 1; // incrementado em cada despertar real (tela/resume)
 let sunshineReason = 'startup';
 let lastSunshineGeneration = -1;
@@ -93,13 +98,59 @@ function acquireInstanceLock() {
 
 /* ------------------------------------------------------------------ utils */
 
+// Configurações antigas (enabled/offTime/onTime) descreviam um ciclo único e
+// faziam o app apagar a tela logo ao abrir. Elas são descartadas na migração:
+// nenhum agendamento é criado automaticamente e o restante é preservado.
+function migrateConfig(raw) {
+  const cfg = { ...DEFAULTS, ...raw };
+  let changed = false;
+  const hasSchedules = Array.isArray(raw.schedules);
+
+  if (hasSchedules) {
+    const clean = sanitizeSchedules(raw.schedules);
+    cfg.schedules = clean;
+    if (JSON.stringify(clean) !== JSON.stringify(raw.schedules)) changed = true;
+  }
+
+  const legacyKeys = ['enabled', 'offTime', 'onTime'].filter(
+    (key) => Object.prototype.hasOwnProperty.call(raw, key),
+  );
+  if (legacyKeys.length) {
+    for (const key of legacyKeys) delete cfg[key];
+    changed = true;
+    if (!hasSchedules) {
+      cfg.schedules = [];
+      cfg.scheduleStartsAt = null;
+      cfg.manualOverride = false;
+    }
+  }
+
+  for (const key of ['enabled', 'offTime', 'onTime']) {
+    if (Object.prototype.hasOwnProperty.call(cfg, key)) {
+      delete cfg[key];
+      changed = true;
+    }
+  }
+  return { cfg, changed };
+}
+
 function loadConfig() {
+  let raw = {};
   try {
-    const raw = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-    return { ...DEFAULTS, ...raw };
+    raw = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')) || {};
   } catch {
     return { ...DEFAULTS };
   }
+  const { cfg, changed } = migrateConfig(raw);
+  if (changed) {
+    try {
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+      fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2));
+    } catch (err) {
+      console.error('[nocturne] falha ao migrar config:', err.message);
+    }
+  }
+  return cfg;
 }
 
 function saveConfig() {
@@ -389,7 +440,7 @@ function moonlightClientActive() {
 }
 
 function checkMoonlightWake() {
-  if (!config.enabled || appliedState !== 'off' || !sunshineActive()) return;
+  if (appliedState !== 'off' || !sunshineActive()) return;
   if (!moonlightClientActive()) return;
   const res = applyState('on', config, 'moonlight');
   if (!res.ok) return;
@@ -670,51 +721,19 @@ function readState(cfg = config) {
 
 /* ------------------------------------------------------------- scheduler */
 
-function toMinutes(hhmm) {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || ''));
-  if (!m) return null;
-  const h = parseInt(m[1], 10);
-  const min = parseInt(m[2], 10);
-  if (h > 23 || min > 59) return null;
-  return h * 60 + min;
-}
-
-function desiredState(nowMinutes, offMin, onMin) {
-  if (offMin === null || onMin === null || offMin === onMin) return 'on';
-  if (offMin < onMin) return nowMinutes >= offMin && nowMinutes < onMin ? 'off' : 'on';
-  return nowMinutes >= offMin || nowMinutes < onMin ? 'off' : 'on';
-}
-
-function nextChange(offMin, onMin, nowMinutes) {
-  const times = [offMin, onMin].filter((v) => v !== null).sort((a, b) => a - b);
-  if (!times.length) return null;
-  const future = times.find((t) => t > nowMinutes);
-  const at = future !== undefined ? future : times[0];
-  const minutes = future !== undefined ? future - nowMinutes : 1440 - nowMinutes + at;
-  return { at, minutes, atLabel: `${String(Math.floor(at / 60)).padStart(2, '0')}:${String(at % 60).padStart(2, '0')}` };
-}
-
-function fmtTime(minutes) {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  if (h === 0) return `${m} min`;
-  return `${h}h ${String(m).padStart(2, '0')}min`;
-}
-
 function logEvent(text, kind = 'info') {
   lastEvent = { time: new Date().toISOString(), text, kind };
 }
 
-// Confirmação antes de salvar: o ciclo só entra em vigor no próximo limite,
-// nunca de forma retroativa no momento em que o horário é ajustado.
+// Depois de confirmar um alarme, ele só passa a agir no próximo limite:
+// nada é aplicado de forma retroativa ao horário atual.
 function armSchedule() {
   const d = new Date();
   const nowMinutes = d.getHours() * 60 + d.getMinutes();
-  const offMin = toMinutes(config.offTime);
-  const onMin = toMinutes(config.onTime);
-  const next = nextChange(offMin, onMin, nowMinutes);
+  const alarms = enabledAlarms(config);
+  const next = nextChange(alarms, nowMinutes);
 
-  if (!next || offMin === null || onMin === null || offMin === onMin) {
+  if (!next) {
     scheduleHoldUntil = null;
     config.scheduleStartsAt = null;
     saveConfig();
@@ -725,33 +744,44 @@ function armSchedule() {
   scheduleHoldUntil = Date.now() + Math.max(1000, restMs);
   config.scheduleStartsAt = scheduleHoldUntil;
   saveConfig();
-  lastTarget = desiredState(nowMinutes, offMin, onMin);
-  logEvent(`Horários confirmados · próximo ciclo às ${next.atLabel}`, 'info');
+  lastTarget = desiredState(nowMinutes, alarms);
+  logEvent(`Agendamentos confirmados · próximo às ${next.atLabel}`, 'info');
+}
+
+function setSchedules(list) {
+  config.schedules = sanitizeSchedules(list);
+  saveConfig();
+  armSchedule();
+  const data = broadcast();
+  return data;
+}
+
+function activeAlarmsCount() {
+  return enabledAlarms(config).length;
 }
 
 function snapshot() {
   const d = new Date();
   const nowMinutes = d.getHours() * 60 + d.getMinutes();
-  const offMin = toMinutes(config.offTime);
-  const onMin = toMinutes(config.onTime);
+  const alarms = enabledAlarms(config);
   const backend = detectBackend(config.backend);
-  const next = nextChange(offMin, onMin, nowMinutes);
+  const next = nextChange(alarms, nowMinutes);
   return {
-    config: { ...config },
+    config: { ...config, schedules: sanitizeSchedules(config.schedules) },
     version: app.getVersion(),
     state: appliedState,
-    target: desiredState(nowMinutes, offMin, onMin),
+    target: desiredState(nowMinutes, alarms),
     backend,
     backendLabel: backendLabel(backend),
     outputs: listOutputs(backend),
-    next: next ? { ...next, label: fmtTime(next.minutes), state: next.at === offMin ? 'off' : 'on' } : null,
+    next: next ? { ...next, label: fmtTime(next.minutes) } : null,
     lastEvent,
     now: d.toISOString(),
-    validSchedule: offMin !== null && onMin !== null && offMin !== onMin,
+    validSchedule: true, // zero agendamentos é um estado válido (app zerado)
+    scheduleCount: (config.schedules || []).length,
+    activeCount: alarms.length,
     scheduleHold: !!scheduleHoldUntil,
     scheduleStartsAt: scheduleHoldUntil ? new Date(scheduleHoldUntil).toISOString() : null,
-    pending: !!pendingApply,
-    pendingTarget: pendingApply ? pendingApply.target : null,
     sunshineRestartAt: lastSunshineRestartAt ? new Date(lastSunshineRestartAt).toISOString() : null,
     sunshinePending: lastSunshineGeneration !== sunshineGeneration,
   };
@@ -784,7 +814,8 @@ function tick() {
   try {
     const d = new Date();
     const nowMinutes = d.getHours() * 60 + d.getMinutes();
-    const target = desiredState(nowMinutes, toMinutes(config.offTime), toMinutes(config.onTime));
+    const alarms = enabledAlarms(config);
+    const target = desiredState(nowMinutes, alarms);
 
     if (scheduleHoldUntil && Date.now() >= scheduleHoldUntil) {
       scheduleHoldUntil = null;
@@ -792,13 +823,19 @@ function tick() {
       config.manualOverride = false;
       saveConfig();
       lastTarget = null;
-      logEvent('Ciclo confirmado iniciado — aplicando os novos horários', 'info');
+      logEvent('Agendamentos ativos — aplicando a partir do próximo alarme', 'info');
     }
 
     if (scheduleHoldUntil) {
-      // Aguarda o próximo limite sem aplicar o horário de forma retroativa.
+      // Aguarda o próximo alarme sem aplicar nada retroativamente.
       lastTarget = target;
-      pendingApply = null;
+      broadcast();
+      return;
+    }
+
+    // Sem alarmes habilitados o app nunca mexe na tela sozinho.
+    if (target === null) {
+      lastTarget = null;
       broadcast();
       return;
     }
@@ -811,18 +848,11 @@ function tick() {
       }
     }
 
-    // Confirmação legada (quando a configuração é alterada fora da aba Altar).
-    if (pendingApply && target === 'off') {
-      broadcast();
-      return;
-    }
-
-    if (config.enabled && !config.manualOverride && target !== appliedState) {
+    if (!config.manualOverride && target !== appliedState) {
       const res = applyState(target, config, 'schedule');
       if (res.ok) {
         logEvent(`Ação automática: tela ${target === 'off' ? 'apagada' : 'ligada'} · ${res.message}`, target === 'off' ? 'off' : 'on');
         appliedState = target;
-        pendingApply = null;
       } else {
         logEvent(`Falha ao ${target === 'off' ? 'apagar' : 'ligar'}: ${res.message}`, 'error');
       }
@@ -865,10 +895,8 @@ function updateTray(data) {
     { label: 'Ligar tela agora', click: () => manualApply('on') },
     { type: 'separator' },
     {
-      label: 'Agendamento ativo',
-      type: 'checkbox',
-      checked: !!config.enabled,
-      click: (item) => setConfig({ enabled: item.checked }),
+      label: `${activeAlarmsCount()} agendamento(s) ativo(s)`,
+      enabled: false,
     },
     { type: 'separator' },
     { label: 'Sair', click: () => app.quit() },
@@ -891,31 +919,20 @@ function manualApply(state) {
 }
 
 function setConfig(patch) {
-  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+  const clean = { ...(patch || {}) };
+  if ('schedules' in clean) {
+    return setSchedules(clean.schedules);
+  }
+  delete clean.offTime;
+  delete clean.onTime;
+  delete clean.enabled;
 
-  config = { ...config, ...patch };
+  config = { ...config, ...clean };
   saveConfig();
-
-  // Horários vêm da confirmação "Aplicar horário HH:MM?" da interface. A partir
-  // daí o ciclo só começa no próximo limite, sem desligar retroativamente.
-  if ('offTime' in patch || 'onTime' in patch) {
-    armSchedule();
-    pendingApply = null;
-    tick();
-    return { ...snapshot(), pending: false };
-  }
-
-  // Recalcula o alvo desejado com a nova config.
-  const target = desiredState(nowMinutes, toMinutes(config.offTime), toMinutes(config.onTime));
-  lastTarget = target;
-
-  // Configurações alteradas fora da aba Altar ainda usam a confirmação legada.
-  if (target !== appliedState && target === 'off' && config.enabled && !config.manualOverride) {
-    pendingApply = { target, reason: 'schedule', ts: Date.now() };
-    return { ...snapshot(), pending: true };
-  }
-
-  pendingApply = null;
+  lastTarget = desiredState(
+    new Date().getHours() * 60 + new Date().getMinutes(),
+    enabledAlarms(config),
+  );
   return snapshot();
 }
 
@@ -990,37 +1007,7 @@ ipcMain.handle('set-config', (_e, patch) => {
   }
   return next;
 });
-// Usuário confirmou: aplica o desligamento/acionamento pendente agora.
-ipcMain.handle('confirmApply', (_e) => {
-  if (!pendingApply) return { ...snapshot(), pending: false };
-  const { target } = pendingApply;
-  const res = applyState(target, config, 'manual');
-  if (res.ok) {
-    appliedState = target;
-    pendingApply = null;
-    logEvent(`Confirmação do usuário: tela ${target === 'off' ? 'apagada' : 'ligada'} agora.`, target === 'off' ? 'off' : 'on');
-  } else {
-    logEvent(`Falha ao aplicar confirmação: ${res.message}`, 'error');
-  }
-  return { ...res, ...snapshot(), pending: false };
-});
-// Usuário escolheu adiar: limpa o pending e deixa o agendamento normal seguir
-// (desligará no offTime do próximo dia).
-ipcMain.handle('deferApply', (_e) => {
-  if (!pendingApply) return { ...snapshot(), pending: false };
-  pendingApply = null;
-  // Mantém o override manual até a próxima troca de alvo (horário de acender).
-  // Sem isso, o tick seguinte aplicaria o desligamento imediatamente.
-  config.manualOverride = true;
-  saveConfig();
-  lastTarget = desiredState(
-    new Date().getHours() * 60 + new Date().getMinutes(),
-    toMinutes(config.offTime),
-    toMinutes(config.onTime),
-  );
-  logEvent('Usuário adiou a ação; o desligamento ficou para o próximo dia.', 'info');
-  return { ...snapshot(), pending: false };
-});
+ipcMain.handle('set-schedules', (_e, list) => setSchedules(list));
 ipcMain.handle('apply', (_e, state) => ({ ...manualApply(state), ...snapshot() }));
 ipcMain.handle('list-outputs', () => listOutputs(detectBackend(config.backend)));
 ipcMain.handle('refresh', () => { tick(); return snapshot(); });
@@ -1090,14 +1077,15 @@ function collectCheck() {
 
   add('Estado atual da tela', 'info', backend === 'none' ? 'indisponível' : readState());
 
-  const offMin = toMinutes(config.offTime);
-  const onMin = toMinutes(config.onTime);
-  const valid = offMin !== null && onMin !== null && offMin !== onMin;
+  const allAlarms = sanitizeSchedules(config.schedules);
+  const alarms = allAlarms.filter((a) => a.enabled);
   const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
-  const next = nextChange(offMin, onMin, nowMin);
-  add('Agenda', ok(valid), valid
-    ? `${config.offTime} apagar → ${config.onTime} acender · alvo agora: ${desiredState(nowMin, offMin, onMin)} · próxima: ${next ? next.atLabel : '-'}`
-    : `Configuração inválida: ${config.offTime} / ${config.onTime}`);
+  const next = nextChange(alarms, nowMin);
+  const target = desiredState(nowMin, alarms);
+  const agendaDetail = allAlarms.length
+    ? `${allAlarms.length} agendamento(s) · ${alarms.length} ativo(s) · ${allAlarms.map((a) => `${a.time} ${a.action === 'off' ? 'apagar' : 'acender'}${a.enabled ? '' : ' (desligado)'}`).join(', ')} · alvo agora: ${target || 'nenhum (controle manual)'} · próxima: ${next ? next.atLabel : '-'}`
+    : 'Nenhum agendamento — app zerado, nenhuma ação automática';
+  add('Agenda', 'ok', agendaDetail);
 
   let autostart = 'não configurado';
   let autostartOk = true;

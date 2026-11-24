@@ -5,8 +5,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   getState: () => ipcRenderer.invoke('get-state'),
   setConfig: (patch) => ipcRenderer.invoke('set-config', patch),
-  confirmApply: () => ipcRenderer.invoke('confirmApply'),
-  deferApply: () => ipcRenderer.invoke('deferApply'),
+  setSchedules: (list) => ipcRenderer.invoke('set-schedules', list),
   apply: (state) => ipcRenderer.invoke('apply', state),
   listOutputs: () => ipcRenderer.invoke('list-outputs'),
   refresh: () => ipcRenderer.invoke('refresh'),
