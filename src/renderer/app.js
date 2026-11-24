@@ -86,6 +86,28 @@ function flash(el) {
   setTimeout(() => { el.style.filter = old; }, 280);
 }
 
+/* ------------------------------------------------ confirmação de horário */
+function renderPending(data) {
+  const pending = !!data.pending;
+  $('confirmBackdrop').hidden = !pending;
+  if (pending) {
+    $('confirmDetail').textContent = data.config && data.config.offTime
+      ? `O horário ${data.config.offTime} já está vigente agora.`
+      : 'O horário escolhido já está dentro da janela atual.';
+  }
+}
+
+$('btnConfirmOff').addEventListener('click', async () => {
+  const data = await window.api.confirmApply();
+  render(data);
+  renderPending(data);
+});
+$('btnDeferOff').addEventListener('click', async () => {
+  const data = await window.api.deferApply();
+  render(data);
+  renderPending(data);
+});
+
 /* ----------------------------------------------------------- config bind */
 const timeInputs = { offTime: $('offTime'), onTime: $('onTime') };
 
@@ -93,22 +115,22 @@ for (const [key, el] of Object.entries(timeInputs)) {
   el.addEventListener('change', async () => {
     const patch = {};
     patch[key] = el.value;
-    await window.api.setConfig(patch);
+    render(await window.api.setConfig(patch));
   });
 }
 
-$('enabled').addEventListener('change', (e) => window.api.setConfig({ enabled: e.target.checked }));
-$('setEnabled').addEventListener('change', (e) => window.api.setConfig({ enabled: e.target.checked }));
-$('setAutostart').addEventListener('change', (e) => window.api.setConfig({ autostart: e.target.checked }));
-$('setMinimized').addEventListener('change', (e) => window.api.setConfig({ startMinimized: e.target.checked }));
-$('setSound').addEventListener('change', (e) => {
-  window.api.setConfig({ sound: e.target.checked });
+$('enabled').addEventListener('change', async (e) => render(await window.api.setConfig({ enabled: e.target.checked })));
+$('setEnabled').addEventListener('change', async (e) => render(await window.api.setConfig({ enabled: e.target.checked })));
+$('setAutostart').addEventListener('change', async (e) => render(await window.api.setConfig({ autostart: e.target.checked })));
+$('setMinimized').addEventListener('change', async (e) => render(await window.api.setConfig({ startMinimized: e.target.checked })));
+$('setSound').addEventListener('change', async (e) => {
+  render(await window.api.setConfig({ sound: e.target.checked }));
   if (e.target.checked) ensureAudio();
 });
 
 $('backendSelect').addEventListener('change', async (e) => {
-  await window.api.setConfig({ backend: e.target.value });
-  await window.api.refresh();
+  render(await window.api.setConfig({ backend: e.target.value }));
+  render(await window.api.refresh());
 });
 
 /* ------------------------------------------------------------- rendering */
@@ -303,6 +325,7 @@ function render(data) {
   $('scheduleWarning').hidden = !!data.validSchedule;
   renderTimeline(data);
   renderOutputs(data);
+  renderPending(data);
   appendLog(data.lastEvent);
 
   if (data.state !== lastApplied && lastApplied !== null) {

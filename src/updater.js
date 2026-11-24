@@ -266,6 +266,19 @@ async function downloadAsset(release, destination) {
   }
 }
 
+function updateAutostart(exe) {
+  try {
+    const file = path.join(app.getPath('home'), '.config', 'autostart', 'nocturne-display.desktop');
+    if (!fs.existsSync(file)) return;
+    const content = fs.readFileSync(file, 'utf8')
+      .split('\n')
+      .filter((line) => !/^OnlyShowIn=/i.test(line))
+      .map((line) => (/^Exec=/i.test(line) ? `Exec="${exe}" --minimized` : line))
+      .join('\n');
+    fs.writeFileSync(file, content);
+  } catch { /* autostart é opcional */ }
+}
+
 async function install() {
   if (installing || checking) return snapshot();
   if (!state.appImage) {
@@ -278,9 +291,12 @@ async function install() {
   }
 
   installing = true;
-  const target = state.appImage;
-  const temp = path.join(path.dirname(target), `.${path.basename(target)}.update-${process.pid}-${Date.now()}`);
+  const current = state.appImage;
   const release = state.release;
+  const dir = path.dirname(current);
+  const assetName = path.basename(release.assetName || `Nocturne-Display-${release.version}-x86_64.AppImage`);
+  const target = path.join(dir, assetName);
+  const temp = path.join(dir, `.${assetName}.update-${process.pid}-${Date.now()}`);
 
   setStatus('downloading', `Baixando ${release.assetName}...`, { progress: 0, busy: true });
 
@@ -290,10 +306,17 @@ async function install() {
     fs.chmodSync(temp, 0o755);
     patch({ status: 'installing', message: 'Aplicando atualização...', progress: 100 });
     fs.renameSync(temp, target);
+    if (path.resolve(target) !== path.resolve(current)) {
+      // Remove a versão antiga e aponta o updater/reinício para o novo arquivo.
+      try { if (fs.existsSync(current)) fs.unlinkSync(current); } catch { /* montagem FUSE pode segurar o inode */ }
+      patch({ appImage: target });
+    }
+    updateAutostart(target);
     installing = false;
     setStatus('installed', `Versão ${release.version} instalada. Reinicie para utilizá-la.`, {
       progress: 100,
       busy: false,
+      version: release.version,
     });
   } catch (err) {
     installing = false;

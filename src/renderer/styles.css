@@ -671,6 +671,41 @@ code { color: var(--gold); font-size: 10px; }
 .notes-panel .release-notes::-webkit-scrollbar-thumb { background: rgba(132,242,223,.2); border-radius: 8px; }
 .nav-item .nav-mark.update-dot { background: var(--gold); box-shadow: 0 0 12px var(--gold); opacity: 1; }
 
+/* ------------------------------------------------ confirmação de horário */
+.confirm-backdrop {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(4, 3, 10, .72);
+  backdrop-filter: blur(9px);
+  animation: confirmFade .22s var(--ease);
+}
+.confirm-backdrop[hidden] { display: none; }
+.confirm-dialog {
+  width: min(520px, calc(100% - 48px));
+  padding: 30px 32px 26px;
+  text-align: center;
+  border-radius: 24px;
+  animation: confirmRise .3s var(--ease);
+}
+.confirm-sigil {
+  width: 52px; height: 52px; margin: 0 auto 14px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  font-size: 24px; color: var(--gold);
+  border: 1px solid rgba(232,201,141,.35);
+  background: radial-gradient(circle, rgba(232,201,141,.16), transparent 70%);
+  box-shadow: 0 0 26px rgba(232,201,141,.2);
+}
+.confirm-kicker { font-size: 9px; letter-spacing: .28em; color: var(--aqua); opacity: .8; margin-bottom: 10px; }
+.confirm-dialog h2 {
+  font-family: 'Cinzel', serif; font-size: 18px; line-height: 1.5;
+  font-weight: 500; margin: 0 0 10px; color: var(--text);
+}
+.confirm-sub { font-size: 11px; line-height: 1.6; color: var(--muted); margin: 0 0 22px; }
+.confirm-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+@keyframes confirmFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes confirmRise { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }

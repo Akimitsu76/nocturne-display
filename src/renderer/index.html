@@ -57,7 +57,7 @@
         <div class="side-status-value" id="sideState">Tela acesa</div>
       </div>
     </div>
-    <div class="sidebar-foot"><span id="footVersion">v1.2.0</span> <span>·</span> Sunshine Companion</div>
+    <div class="sidebar-foot"><span id="footVersion">v1.3.0</span> <span>·</span> Sunshine Companion</div>
   </aside>
 
   <main class="main">
@@ -337,6 +337,20 @@
       </div>
     </section>
   </main>
+</div>
+
+<!-- ======================= CONFIRMAÇÃO DE HORÁRIO ======================= -->
+<div class="confirm-backdrop" id="confirmBackdrop" hidden>
+  <div class="confirm-dialog glass" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <div class="confirm-sigil" aria-hidden="true">☾</div>
+    <div class="confirm-kicker">HORÁRIO JÁ VIGENTE</div>
+    <h2 id="confirmTitle">Deseja desligar agora ou agendar nesse horario do proximo dia</h2>
+    <p class="confirm-sub" id="confirmDetail">O horário escolhido já está dentro da janela atual.</p>
+    <div class="confirm-actions">
+      <button class="btn btn-off small" id="btnConfirmOff"><span class="btn-glyph">◐</span> Desligar agora</button>
+      <button class="btn btn-ghost small" id="btnDeferOff"><span class="btn-glyph">◇</span> Agendar para o próximo dia</button>
+    </div>
+  </div>
 </div>
 
 <script src="app.js"></script>

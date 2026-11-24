@@ -499,7 +499,7 @@ function tick() {
     // o agendador automático não aplica sozinho. Aguarda o usuário escolher via IPC:
     // confirmApply (aplica agora) ou deferApply (deixa o agendamento normal seguir,
     // ou seja, desligará no offTime do próximo dia).
-    if (pendingApply && pendingApply.target === 'off') {
+    if (pendingApply && target === 'off') {
       broadcast();
       return;
     }
@@ -653,7 +653,7 @@ function writeAutostart(enabled) {
       'Comment=Vigília automática do monitor para Moonlight',
       `Exec="${exe}" --minimized`,
       'Icon=nocturne-display',
-      'OnlyShowIn=GNOME;KDE;XFCE;LXQt;Cinnamon;MATE;Unity;',
+      // Sem OnlyShowIn: o Niri (e outros compositores) também devem iniciar o app.
       'X-GNOME-Autostart-enabled=true',
       'NoDisplay=false',
       '',
@@ -699,7 +699,16 @@ ipcMain.handle('confirmApply', (_e) => {
 ipcMain.handle('deferApply', (_e) => {
   if (!pendingApply) return { ...snapshot(), pending: false };
   pendingApply = null;
-  logEvent('Usuário adiou a ação; o agendamento normal seguirá no próximo ciclo.', 'info');
+  // Mantém o override manual até a próxima troca de alvo (horário de acender).
+  // Sem isso, o tick seguinte aplicaria o desligamento imediatamente.
+  config.manualOverride = true;
+  saveConfig();
+  lastTarget = desiredState(
+    new Date().getHours() * 60 + new Date().getMinutes(),
+    toMinutes(config.offTime),
+    toMinutes(config.onTime),
+  );
+  logEvent('Usuário adiou a ação; o desligamento ficou para o próximo dia.', 'info');
   return { ...snapshot(), pending: false };
 });
 ipcMain.handle('apply', (_e, state) => ({ ...manualApply(state), ...snapshot() }));
@@ -862,6 +871,7 @@ if (process.argv.includes('--check') || process.argv.includes('--check-json')) {
 
       app.on('activate', () => showWindow());
     });
+    }
   }
 }
 
