@@ -138,8 +138,18 @@ function sunshineActive() {
 }
 
 function startSunshine() {
-  const r = run('sunshine', [], 5000);
+  // Reinicia o serviço mesmo se ele já estiver rodando: o Sunshine inicializado
+  // enquanto a tela estava apagada fica sem captura de vídeo e só volta a
+  // funcionar depois de um restart com o monitor ligado.
+  const r = run('systemctl', ['--user', 'restart', 'sunshine'], 12000);
   if (r.ok) {
+    logEvent('Sunshine reiniciado com a tela ligada — captura de vídeo pronta.', 'info');
+    return true;
+  }
+  // Fallback para sistemas sem o serviço de usuário.
+  run('pkill', ['-x', 'sunshine'], 3000);
+  const s = run('sunshine', [], 5000);
+  if (s.ok) {
     logEvent('Sunshine iniciado após despertar da tela.', 'info');
     return true;
   }
@@ -940,6 +950,9 @@ if (process.argv.includes('--check') || process.argv.includes('--check-json')) {
 
       appliedState = readState();
       logEvent(`Backend detectado: ${backendLabel(detectBackend(config.backend))}`, 'info');
+      // Garante que o Sunshine seja iniciado/reiniciado com o estado real do
+      // monitor: se ele tiver começado com a tela apagada, a captura falha.
+      startSunshine();
       tick();
       tickTimer = setInterval(tick, 1000);
       moonlightTimer = setInterval(checkMoonlightWake, 1000);
