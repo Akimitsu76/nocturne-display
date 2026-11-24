@@ -14,14 +14,14 @@ Baixe o AppImage na aba [**Releases**](../../releases). Também é possível com
 ```bash
 npm install
 npm run build
-# sai em dist/Nocturne-Display-1.2.0-x86_64.AppImage
+# sai em dist/Nocturne-Display-1.4.1-x86_64.AppImage
 ```
 
 ## Uso
 
 ```bash
-chmod +x Nocturne-Display-1.2.0-x86_64.AppImage
-./Nocturne-Display-1.2.0-x86_64.AppImage
+chmod +x Nocturne-Display-1.4.1-x86_64.AppImage
+./Nocturne-Display-1.4.1-x86_64.AppImage
 ```
 
 1. No **Altar**, defina os horários (ex.: `08:00` apagar, `19:00` acender).
@@ -32,6 +32,18 @@ chmod +x Nocturne-Display-1.2.0-x86_64.AppImage
 
 Horários *cross-midnight* funcionam (ex.: `22:00` → `06:00`). O app reavalia a agenda
 ao voltar da suspensão.
+
+### Agendamento com confirmação
+
+Ao alterar **Apagar a tela às** ou **Acender a tela às**, o app abre a confirmação
+**Aplicar horário HH:MM?** com **Sim** / **Não**. Nada é salvo e nenhum comando é enviado
+ao monitor antes do `Sim`; `Não` (ou `Esc`) descarta a alteração.
+
+O novo ciclo entra em vigor apenas no **próximo horário programado**, como um despertador.
+Se você estiver com a tela acesa às `01:00` e definir `desligar 00:00` / `ligar 08:00`,
+a tela **não apaga na hora**: ela segue acesa até o próximo limite. Um aviso no **Altar**
+mostra quando o ciclo começa, e esse estado sobrevive a uma reinicialização do app.
+**Apagar agora** / **Acender agora** continuam imediatos.
 
 ## Atualizações automáticas
 
@@ -71,12 +83,15 @@ backend manualmente na aba **Saídas**. Em sessões Niri sem host de bandeja, o 
 - O modo **DPMS** apaga a luz de fundo, mas mantém a saída ativa no compositor — costuma
   ser a opção mais segura se o Sunshine perder a captura quando a saída é desligada.
 - Se ainda assim o streaming falhar sem monitor ativo, use um dummy plug / saída virtual.
+- Quando o Moonlight tenta acordar o PC, o app detecta a conexão ao Sunshine nas portas
+  `47984/47989/47990`, acende a tela, garante que o Sunshine está ativo e mantém o override
+  manual até o próximo horário programado.
 
 ## Teste rápido de compatibilidade
 
 ```bash
-./Nocturne-Display-1.2.0-x86_64.AppImage --check
-./Nocturne-Display-1.2.0-x86_64.AppImage --check-json
+./Nocturne-Display-1.4.1-x86_64.AppImage --check
+./Nocturne-Display-1.4.1-x86_64.AppImage --check-json
 ```
 
 Verifica distro/sessão, FUSE, bibliotecas faltando, backend, saídas, agenda, autostart
@@ -91,7 +106,7 @@ está em [`PROMPT-TESTE-RAPIDO.md`](PROMPT-TESTE-RAPIDO.md).
 Se o AppImage não abrir por falta de `libfuse2`:
 
 ```bash
-./Nocturne-Display-1.2.0-x86_64.AppImage --appimage-extract-and-run
+./Nocturne-Display-1.4.1-x86_64.AppImage --appimage-extract-and-run
 ```
 
 ## Licença

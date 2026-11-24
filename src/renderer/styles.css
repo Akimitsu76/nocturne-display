@@ -671,6 +671,12 @@ code { color: var(--gold); font-size: 10px; }
 .notes-panel .release-notes::-webkit-scrollbar-thumb { background: rgba(132,242,223,.2); border-radius: 8px; }
 .nav-item .nav-mark.update-dot { background: var(--gold); box-shadow: 0 0 12px var(--gold); opacity: 1; }
 
+.note.schedule-hold {
+  color: var(--aqua-soft);
+  border-color: rgba(132,242,223,.28);
+  background: linear-gradient(120deg, rgba(42,90,105,.24), rgba(20,17,34,.5));
+}
+
 /* ------------------------------------------------ confirmação de horário */
 .confirm-backdrop {
   position: fixed; inset: 0; z-index: 100;

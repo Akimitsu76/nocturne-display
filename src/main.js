@@ -25,6 +25,7 @@ const DEFAULTS = {
   sound: false,
   manualOverride: false,
   autoUpdate: true,
+  scheduleStartsAt: null,
 };
 
 let config = loadConfig();
@@ -39,6 +40,13 @@ let lastEvent = { time: null, text: 'Aguardando primeiro ciclo...', kind: 'info'
 let instanceLockFd = null;
 let moonlightTimer = null;
 let pendingApply = null; // { target: 'on'|'off', reason: 'schedule', ts: number }
+let scheduleHoldUntil = null; // novos horários só valem no próximo limite
+if (config.scheduleStartsAt && Number(config.scheduleStartsAt) > Date.now()) {
+  scheduleHoldUntil = Number(config.scheduleStartsAt);
+} else if (config.scheduleStartsAt) {
+  config.scheduleStartsAt = null;
+  saveConfig();
+}
 
 function acquireInstanceLock() {
   const lockFile = path.join(CONFIG_DIR, 'instance.lock');
@@ -463,6 +471,30 @@ function logEvent(text, kind = 'info') {
   lastEvent = { time: new Date().toISOString(), text, kind };
 }
 
+// Confirmação antes de salvar: o ciclo só entra em vigor no próximo limite,
+// nunca de forma retroativa no momento em que o horário é ajustado.
+function armSchedule() {
+  const d = new Date();
+  const nowMinutes = d.getHours() * 60 + d.getMinutes();
+  const offMin = toMinutes(config.offTime);
+  const onMin = toMinutes(config.onTime);
+  const next = nextChange(offMin, onMin, nowMinutes);
+
+  if (!next || offMin === null || onMin === null || offMin === onMin) {
+    scheduleHoldUntil = null;
+    config.scheduleStartsAt = null;
+    saveConfig();
+    return;
+  }
+
+  const restMs = next.minutes * 60000 - d.getSeconds() * 1000 - d.getMilliseconds();
+  scheduleHoldUntil = Date.now() + Math.max(1000, restMs);
+  config.scheduleStartsAt = scheduleHoldUntil;
+  saveConfig();
+  lastTarget = desiredState(nowMinutes, offMin, onMin);
+  logEvent(`Horários confirmados · próximo ciclo às ${next.atLabel}`, 'info');
+}
+
 function snapshot() {
   const d = new Date();
   const nowMinutes = d.getHours() * 60 + d.getMinutes();
@@ -482,6 +514,8 @@ function snapshot() {
     lastEvent,
     now: d.toISOString(),
     validSchedule: offMin !== null && onMin !== null && offMin !== onMin,
+    scheduleHold: !!scheduleHoldUntil,
+    scheduleStartsAt: scheduleHoldUntil ? new Date(scheduleHoldUntil).toISOString() : null,
     pending: !!pendingApply,
     pendingTarget: pendingApply ? pendingApply.target : null,
   };
@@ -516,6 +550,23 @@ function tick() {
     const nowMinutes = d.getHours() * 60 + d.getMinutes();
     const target = desiredState(nowMinutes, toMinutes(config.offTime), toMinutes(config.onTime));
 
+    if (scheduleHoldUntil && Date.now() >= scheduleHoldUntil) {
+      scheduleHoldUntil = null;
+      config.scheduleStartsAt = null;
+      config.manualOverride = false;
+      saveConfig();
+      lastTarget = null;
+      logEvent('Ciclo confirmado iniciado — aplicando os novos horários', 'info');
+    }
+
+    if (scheduleHoldUntil) {
+      // Aguarda o próximo limite sem aplicar o horário de forma retroativa.
+      lastTarget = target;
+      pendingApply = null;
+      broadcast();
+      return;
+    }
+
     if (target !== lastTarget) {
       lastTarget = target;
       if (config.manualOverride) {
@@ -524,10 +575,7 @@ function tick() {
       }
     }
 
-    // Se há uma confirmação pendente (usuário salvou um horário que já está vigente),
-    // o agendador automático não aplica sozinho. Aguarda o usuário escolher via IPC:
-    // confirmApply (aplica agora) ou deferApply (deixa o agendamento normal seguir,
-    // ou seja, desligará no offTime do próximo dia).
+    // Confirmação legada (quando a configuração é alterada fora da aba Altar).
     if (pendingApply && target === 'off') {
       broadcast();
       return;
@@ -617,17 +665,22 @@ function setConfig(patch) {
   config = { ...config, ...patch };
   saveConfig();
 
+  // Horários vêm da confirmação "Aplicar horário HH:MM?" da interface. A partir
+  // daí o ciclo só começa no próximo limite, sem desligar retroativamente.
+  if ('offTime' in patch || 'onTime' in patch) {
+    armSchedule();
+    pendingApply = null;
+    tick();
+    return { ...snapshot(), pending: false };
+  }
+
   // Recalcula o alvo desejado com a nova config.
   const target = desiredState(nowMinutes, toMinutes(config.offTime), toMinutes(config.onTime));
   lastTarget = target;
 
-  // Se o usuário alterou a agenda e o alvo já está vigente AGORA (ex: escolheu
-  // um horário de desligamento que já passou ou está dentro da janela atual),
-  // não desliga na mesma hora. Deixa um pendingApply para o frontend pedir
-  // confirmação: "desligar agora" ou "agendar para o próximo dia".
+  // Configurações alteradas fora da aba Altar ainda usam a confirmação legada.
   if (target !== appliedState && target === 'off' && config.enabled && !config.manualOverride) {
     pendingApply = { target, reason: 'schedule', ts: Date.now() };
-    // Não aplica ainda; aguarda confirmação via IPC confirmApply/deferApply.
     return { ...snapshot(), pending: true };
   }
 

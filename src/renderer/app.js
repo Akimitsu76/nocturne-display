@@ -3,6 +3,7 @@
 const $ = (id) => document.getElementById(id);
 let current = null;
 let updateState = null;
+let pendingTime = null;
 let lastApplied = null;
 let lastEventTime = null;
 let lastOutputSig = null;
@@ -87,36 +88,46 @@ function flash(el) {
 }
 
 /* ------------------------------------------------ confirmação de horário */
-function renderPending(data) {
-  const pending = !!data.pending;
-  $('confirmBackdrop').hidden = !pending;
-  if (pending) {
-    $('confirmDetail').textContent = data.config && data.config.offTime
-      ? `O horário ${data.config.offTime} já está vigente agora.`
-      : 'O horário escolhido já está dentro da janela atual.';
-  }
+const TIME_LABELS = { offTime: 'apagar a tela', onTime: 'acender a tela' };
+
+function openTimeConfirmation(key, value) {
+  pendingTime = { key, value };
+  $('confirmTitle').textContent = `Aplicar horário ${value}?`;
+  $('confirmDetail').textContent = `Confirmar para ${TIME_LABELS[key]} às ${value}. O novo ciclo começa no próximo horário programado — a tela atual não será alterada agora.`;
+  $('confirmBackdrop').hidden = false;
+  $('btnDeferOff').focus();
 }
 
+function closeTimeConfirmation() {
+  pendingTime = null;
+  $('confirmBackdrop').hidden = true;
+}
+
+function cancelTimeConfirmation() {
+  const pending = pendingTime;
+  if (pending && current) timeInputs[pending.key].value = current.config[pending.key];
+  closeTimeConfirmation();
+}
+
+$('btnDeferOff').addEventListener('click', cancelTimeConfirmation);
 $('btnConfirmOff').addEventListener('click', async () => {
-  const data = await window.api.confirmApply();
-  render(data);
-  renderPending(data);
+  const pending = pendingTime;
+  if (!pending) return;
+  closeTimeConfirmation();
+  render(await window.api.setConfig({ [pending.key]: pending.value }));
 });
-$('btnDeferOff').addEventListener('click', async () => {
-  const data = await window.api.deferApply();
-  render(data);
-  renderPending(data);
+$('confirmBackdrop').addEventListener('click', (e) => {
+  if (e.target === $('confirmBackdrop')) cancelTimeConfirmation();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('confirmBackdrop').hidden) cancelTimeConfirmation();
 });
 
 /* ----------------------------------------------------------- config bind */
 const timeInputs = { offTime: $('offTime'), onTime: $('onTime') };
 
 for (const [key, el] of Object.entries(timeInputs)) {
-  el.addEventListener('change', async () => {
-    const patch = {};
-    patch[key] = el.value;
-    render(await window.api.setConfig(patch));
-  });
+  el.addEventListener('change', () => openTimeConfirmation(key, el.value));
 }
 
 $('enabled').addEventListener('change', async (e) => render(await window.api.setConfig({ enabled: e.target.checked })));
@@ -312,8 +323,12 @@ function render(data) {
     : 'sem ciclo válido';
   $('nextCountdown').textContent = data.next ? `em ${data.next.label}` : '—';
 
-  if (document.activeElement !== timeInputs.offTime) timeInputs.offTime.value = cfg.offTime;
-  if (document.activeElement !== timeInputs.onTime) timeInputs.onTime.value = cfg.onTime;
+  if (document.activeElement !== timeInputs.offTime && !(pendingTime && pendingTime.key === 'offTime')) {
+    timeInputs.offTime.value = cfg.offTime;
+  }
+  if (document.activeElement !== timeInputs.onTime && !(pendingTime && pendingTime.key === 'onTime')) {
+    timeInputs.onTime.value = cfg.onTime;
+  }
   $('enabled').checked = !!cfg.enabled;
   $('setEnabled').checked = !!cfg.enabled;
   $('setAutostart').checked = !!cfg.autostart;
@@ -323,9 +338,18 @@ function render(data) {
   $('backendBadge').textContent = data.backendLabel;
 
   $('scheduleWarning').hidden = !!data.validSchedule;
+  const holdNote = $('scheduleHoldNote');
+  holdNote.hidden = !data.scheduleHold;
+  if (data.scheduleHold) {
+    const start = data.scheduleStartsAt
+      ? new Date(data.scheduleStartsAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      : (data.next ? data.next.atLabel : null);
+    holdNote.textContent = start
+      ? `⏳ Horário salvo. O novo ciclo começa às ${start} — a tela atual não será alterada até lá.`
+      : '⏳ Horário salvo. O novo ciclo começa no próximo horário programado — a tela atual não será alterada agora.';
+  }
   renderTimeline(data);
   renderOutputs(data);
-  renderPending(data);
   appendLog(data.lastEvent);
 
   if (data.state !== lastApplied && lastApplied !== null) {

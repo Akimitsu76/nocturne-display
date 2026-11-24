@@ -57,7 +57,7 @@
         <div class="side-status-value" id="sideState">Tela acesa</div>
       </div>
     </div>
-    <div class="sidebar-foot"><span id="footVersion">v1.4.0</span> <span>·</span> Sunshine Companion</div>
+    <div class="sidebar-foot"><span id="footVersion">v1.4.1</span> <span>·</span> Sunshine Companion</div>
   </aside>
 
   <main class="main">
@@ -184,6 +184,10 @@
 
       <div class="note glass-mini" id="scheduleWarning" hidden>
         ⚠ Defina horários diferentes para criar um ciclo válido.
+      </div>
+
+      <div class="note glass-mini schedule-hold" id="scheduleHoldNote" hidden>
+        ⏳ Horário salvo. O novo ciclo começa no próximo horário programado — a tela atual não será alterada agora.
       </div>
 
       <div class="note glass-mini moonlight-note">
@@ -342,13 +346,13 @@
 <!-- ======================= CONFIRMAÇÃO DE HORÁRIO ======================= -->
 <div class="confirm-backdrop" id="confirmBackdrop" hidden>
   <div class="confirm-dialog glass" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
-    <div class="confirm-sigil" aria-hidden="true">☾</div>
-    <div class="confirm-kicker">HORÁRIO JÁ VIGENTE</div>
-    <h2 id="confirmTitle">Deseja desligar agora ou agendar nesse horario do proximo dia</h2>
-    <p class="confirm-sub" id="confirmDetail">O horário escolhido já está dentro da janela atual.</p>
+    <div class="confirm-sigil" aria-hidden="true">✧</div>
+    <div class="confirm-kicker">NOVO HORÁRIO</div>
+    <h2 id="confirmTitle">Aplicar horário?</h2>
+    <p class="confirm-sub" id="confirmDetail">O novo ciclo começa no próximo horário programado.</p>
     <div class="confirm-actions">
-      <button class="btn btn-off small" id="btnConfirmOff"><span class="btn-glyph">◐</span> Desligar agora</button>
-      <button class="btn btn-ghost small" id="btnDeferOff"><span class="btn-glyph">◇</span> Agendar para o próximo dia</button>
+      <button class="btn btn-ghost small" id="btnDeferOff"><span class="btn-glyph">✕</span> Não</button>
+      <button class="btn btn-on small" id="btnConfirmOff"><span class="btn-glyph">✓</span> Sim</button>
     </div>
   </div>
 </div>
